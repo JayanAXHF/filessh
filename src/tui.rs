@@ -20,13 +20,19 @@ use ratatui::widgets::StatefulWidget;
 use russh_sftp::client::SftpSession;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-pub fn tui(current_path: String, cli: Cli, rt: tokio::runtime::Runtime) -> Result<(), Error> {
+pub fn tui(
+    current_path: String,
+    cli: Cli,
+    rt: tokio::runtime::Runtime,
+    sftp: Arc<SftpSession>,
+) -> Result<(), Error> {
     let config = Config::new(cli);
     let theme = create_theme("Imperial Dark").expect("theme");
     let mut global = Global::new(config, theme);
-    let mut state = Scenery::new(current_path);
+    let mut state = Scenery::new(current_path, sftp);
 
     run_tui(
         init, //
@@ -92,8 +98,10 @@ pub enum AppEvent {
     Timer(TimeOut),
     Event(crossterm::event::Event),
     ChangeDir(String),
+    UpdateCurrentPath(String),
     UpdateFiles(Vec<FileEntry>),
     DownloadFile(String, PathBuf),
+    DownloadFolder(String, PathBuf),
     Rendered,
     Message(String),
     Status(usize, String),
@@ -127,9 +135,9 @@ pub struct Scenery {
 }
 
 impl Scenery {
-    pub fn new(current_path: String) -> Self {
+    pub fn new(current_path: String, sftp: Arc<SftpSession>) -> Self {
         Self {
-            async1: MainUI::new(current_path),
+            async1: MainUI::new(current_path, sftp),
             status: StatusLineState::default(),
             error_dlg: MsgDialogState::default(),
         }
@@ -315,6 +323,7 @@ pub mod main_ui {
         pub current_file_entries: Vec<FileEntry>,
         pub input_state: TextInputState,
         pub input_mode: InputMode,
+        pub sftp: Arc<SftpSession>,
     }
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
     pub enum InputMode {
@@ -324,13 +333,14 @@ pub mod main_ui {
     }
 
     impl MainUI {
-        pub fn new(current_path: String) -> Self {
+        pub fn new(current_path: String, sftp: Arc<SftpSession>) -> Self {
             Self {
                 current_path,
                 table_state: TableState::default(),
                 current_file_entries: Vec::new(),
                 input_state: TextInputState::default(),
                 input_mode: InputMode::default(),
+                sftp,
             }
         }
     }
@@ -471,10 +481,13 @@ pub mod main_ui {
             info!("Connected");
 
             let sftp = ssh.sftp().await?;
-            let files = sftp.read_dir(path).await?;
+            let files = sftp.read_dir(path.clone()).await?;
             let files = files.into_iter().map(FileEntry::from).collect::<Vec<_>>();
+            let full_path = sftp.canonicalize(path).await?;
             sftp.close().await?;
             ssh.close().await?;
+            chan.send(Ok(Control::Event(AppEvent::UpdateCurrentPath(full_path))))
+                .await?;
             chan.send(Ok(Control::Event(AppEvent::UpdateFiles(files))))
                 .await?;
             Ok(Control::Event(AppEvent::AsyncTick(300)))
@@ -496,62 +509,62 @@ pub mod main_ui {
             AppEvent::Event(event) => {
                 try_flow!(state.input_state.handle(event, Regular));
                 try_flow!(match_focus!(
-                                    state.table_state => {
-                try_flow!(
-                                        rowselection::handle_events(
-                                            &mut state.table_state,
-                                            true,
-                                            event
-                                        )
-                                    );
-                                        match event {
-                                            ct_event!(key press 'j') => {
-                                                state.table_state.move_down(1);
-                                                Control::<AppEvent>::Changed
-                                            }
-                                            ct_event!(key press 'k') => {
-                                                state.table_state.move_up(1);
-                                                Control::Changed
-                                            }
-                                            ct_event!(keycode press Left ) | ct_event!(key press 'h')=> {
+                    state.table_state => {
+                    try_flow!(
+                        rowselection::handle_events(
+                            &mut state.table_state,
+                            true,
+                            event
+                        )
+                    );
+                        match event {
+                            ct_event!(key press 'j') => {
+                                state.table_state.move_down(1);
+                                Control::<AppEvent>::Changed
+                            }
+                            ct_event!(key press 'k') => {
+                                state.table_state.move_up(1);
+                                Control::Changed
+                            }
+                            ct_event!(keycode press Left ) | ct_event!(key press 'h')=> {
 
-                                                let path = PathBuf::from(state.current_path.clone());
-                                                let parent = path.parent();
-                                                if let Some(parent) = parent {
-                                                    let parent = parent.display();
-                                                    state.current_path = parent.to_string();
+                                let path = PathBuf::from(state.current_path.clone());
+                                let parent = path.parent();
+                                if let Some(parent) = parent {
+                                    let parent = parent.display();
+                                    state.current_path = parent.to_string();
 
-                                                    Control::Event(AppEvent::ChangeDir(parent.to_string()))
-                                                } else {
-                                                    Control::Continue
-                                                }
-                                            }
+                                    Control::Event(AppEvent::ChangeDir(parent.to_string()))
+                                } else {
+                                    Control::Continue
+                                }
+                            }
 
-                                            ct_event!(key press 'l') | ct_event!(keycode press Right) => {
-                                                let path = PathBuf::from(state.current_path.clone());
-                                                let selected = state.table_state.selected();
-                                                if let Some(selected) = selected {
-                                                    let Some(file) = state.current_file_entries.get(selected) else {
-                                                        return Ok(Control::Continue);
-                                                    };
-                                                    if file.is_dir() {
-                                                        let path = path.join(file.name());
-                                                        state.current_path = path.display().to_string();
-                                                        return Ok(Control::Event(AppEvent::ChangeDir(path.display().to_string())));
-                                                    }
-                                                }
-                                                Control::Continue
-                                            }
-                                            ct_event!(key press 'd') => {
-                                                state.input_mode = InputMode::DownloadPath;
-                ctx.focus().focus(&state.input_state);
+                            ct_event!(key press 'l') | ct_event!(keycode press Right) => {
+                                let path = PathBuf::from(state.current_path.clone());
+                                let selected = state.table_state.selected();
+                                if let Some(selected) = selected {
+                                    let Some(file) = state.current_file_entries.get(selected) else {
+                                        return Ok(Control::Continue);
+                                    };
+                                    if file.is_dir() {
+                                        let path = path.join(file.name());
+                                        state.current_path = path.display().to_string();
+                                        return Ok(Control::Event(AppEvent::ChangeDir(path.display().to_string())));
+                                    }
+                                }
+                                Control::Continue
+                            }
+                            ct_event!(key press 'd') => {
+                                state.input_mode = InputMode::DownloadPath;
+                                ctx.focus().focus(&state.input_state);
 
-                                                Control::Changed
-                                            }
-                                            _ => Control::Continue
-                                        }
-                                    },
-                                        state.input_state => {
+                                Control::Changed
+                            }
+                            _ => Control::Continue
+                        }
+                    },
+                    state.input_state => {
                         if state.input_mode == InputMode::DownloadPath {
                             match event {
                                 ct_event!(keycode press Enter) => {
@@ -562,11 +575,12 @@ pub mod main_ui {
                                         let Some(file) = state.current_file_entries.get(selected) else {
                                             return Ok(Control::Continue);
                                         };
-                                        return Ok(Control::Event(AppEvent::DownloadFile(file.name().to_string(), path)));
-
-
+                                        let name = state.current_path.clone() + "/" + file.name();
+                                        if file.is_dir() {
+                                            return Ok(Control::Event(AppEvent::DownloadFolder(name, path)));
+                                        }
+                                        return Ok(Control::Event(AppEvent::DownloadFile(name, path)));
                                     }
-
                                 }
                                 _ => {}
                             }
@@ -574,8 +588,8 @@ pub mod main_ui {
                         Control::Continue
                     },
 
-                                    else => Control::Continue
-                                ));
+                    else => Control::Continue
+                ));
                 Control::Continue
             }
             AppEvent::AsyncMsg(s) => {
@@ -583,21 +597,10 @@ pub mod main_ui {
                 Control::Event(AppEvent::Message(s.clone()))
             }
             AppEvent::DownloadFile(name, path) => {
-                let cli = ctx.cfg.cli.clone();
+                let sftp = Arc::clone(&state.sftp);
                 let path = path.clone();
                 let name = name.clone();
                 ctx.spawn_async_ext(|chan| async move {
-                    info!("connecting to {}:{}", cli.host, cli.port);
-                    let mut ssh = Session::connect(
-                        cli.private_key,
-                        cli.username.unwrap_or("root".to_string()),
-                        cli.openssh_certificate,
-                        (cli.host, cli.port),
-                    )
-                    .await?;
-
-                    info!("Connected");
-                    let sftp = ssh.sftp().await?;
                     let mut remote_file = sftp.open(name.clone()).await?;
                     let mut buf = Vec::new();
                     remote_file.read_to_end(&mut buf).await?;
@@ -605,8 +608,20 @@ pub mod main_ui {
                     let _ = file.write(&buf).await?;
                     file.flush().await?;
                     file.sync_all().await?;
-                    sftp.close().await?;
-                    ssh.close().await?;
+                    Ok(Control::Event(AppEvent::AsyncTick(300)))
+                });
+                Control::Continue
+            }
+            AppEvent::DownloadFolder(file, path) => {
+                let sftp = Arc::clone(&state.sftp);
+                let path = path.clone();
+                let file = file.clone();
+                ctx.spawn_async_ext(|_| async move {
+                    let read_dir = sftp.read_dir(file.clone()).await?;
+                    let files = read_dir
+                        .into_iter()
+                        .map(FileEntry::from)
+                        .collect::<Vec<_>>();
                     Ok(Control::Event(AppEvent::AsyncTick(300)))
                 });
                 Control::Continue
@@ -618,25 +633,11 @@ pub mod main_ui {
                     ".".to_string()
                 };
                 info!("changing dir to {}", path);
-
-                let cli = ctx.cfg.cli.clone();
+                let sftp = Arc::clone(&state.sftp);
 
                 ctx.spawn_async_ext(|chan| async move {
-                    info!("connecting to {}:{}", cli.host, cli.port);
-                    let mut ssh = Session::connect(
-                        cli.private_key,
-                        cli.username.unwrap_or("root".to_string()),
-                        cli.openssh_certificate,
-                        (cli.host, cli.port),
-                    )
-                    .await?;
-                    info!("Connected");
-
-                    let sftp = ssh.sftp().await?;
                     let files = sftp.read_dir(path).await?;
                     let files = files.into_iter().map(FileEntry::from).collect::<Vec<_>>();
-                    sftp.close().await?;
-                    ssh.close().await?;
                     chan.send(Ok(Control::Event(AppEvent::UpdateFiles(files))))
                         .await?;
 
@@ -647,6 +648,10 @@ pub mod main_ui {
             AppEvent::UpdateFiles(files) => {
                 state.current_file_entries = files.to_vec();
                 Control::Changed
+            }
+            AppEvent::UpdateCurrentPath(path) => {
+                state.current_path = path.clone();
+                Control::Continue
             }
             _ => Control::Continue,
         };

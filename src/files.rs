@@ -6,6 +6,7 @@ use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::symbols::border::QUADRANT_BOTTOM_RIGHT;
 use ratatui::symbols::line::{ROUNDED_BOTTOM_LEFT, ROUNDED_BOTTOM_RIGHT, VERTICAL_RIGHT};
 use ratatui::{text::Span, widgets::Widget};
+use russh_sftp::client::fs::File;
 use russh_sftp::protocol::{FileAttributes, FileType};
 
 #[derive(Getters, Debug, Clone)]
@@ -106,6 +107,12 @@ impl From<FileEntry> for Paragraph<'_> {
         Paragraph::new(vec)
     }
 }
+
+// impl From<File> for FileEntry {
+// fn from(value: File) -> Self {
+// //let name = value.
+// }
+// }
 
 pub struct FileDataSlice<'a>(pub &'a [FileEntry]);
 
