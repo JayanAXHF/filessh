@@ -223,7 +223,12 @@ pub fn event(
         AppEvent::Event(event) => {
             let mut r = match &event {
                 ct_event!(resized) => Control::Changed,
-                ct_event!(key press CONTROL-'q') => Control::Quit,
+                ct_event!(key press CONTROL-'q') => {
+                    if let Some(cancel) = state.async1.throbber_cancel.take() {
+                        cancel.cancel();
+                    }
+                    Control::Quit
+                }
                 _ => Control::Continue,
             };
 
@@ -269,8 +274,6 @@ pub fn error(
     _ctx: &mut Global,
 ) -> Result<Control<AppEvent>, Error> {
     error!("{:?}", &*event);
-    //let r: Result<(), Error> = Err(event);
-    //r.unwrap();
     state.error_dlg.append(format!("{:?}", &*event).as_str());
     Ok(Control::Changed)
 }
@@ -285,7 +288,7 @@ pub mod main_ui {
 
     use super::AppEvent;
     use super::Global;
-    
+
     use color_eyre::Report as Error;
     use color_eyre::eyre;
     use color_eyre::eyre::Result;
@@ -300,7 +303,8 @@ pub mod main_ui {
     use rat_ftable::selection::RowSelection;
     use rat_ftable::selection::rowselection;
     use rat_ftable::textdata::Cell;
-    
+
+    use rat_salsa::tasks::Cancel;
     use rat_salsa::{Control, SalsaContext};
     use rat_widget::event::TextOutcome;
     use rat_widget::event::{HandleEvent, Regular};
@@ -319,7 +323,7 @@ pub mod main_ui {
     use ratatui::style::Stylize;
     use ratatui::symbols;
     use ratatui::symbols::line::HORIZONTAL;
-    
+
     use ratatui::symbols::line::ROUNDED_TOP_LEFT;
     use ratatui::text::Line;
     use ratatui::text::Span;
@@ -331,16 +335,24 @@ pub mod main_ui {
     use ratatui::widgets::Widget;
     use ratatui::widgets::block;
     use russh_sftp::client::SftpSession;
+    use std::collections::VecDeque;
     use std::f64;
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::Mutex;
+    use std::thread;
     use std::time::Duration;
-    
+    use std::time::Instant;
+    use tachyonfx::EffectManager;
+    use tachyonfx::EffectTimer;
+    use tachyonfx::Interpolation;
+    use tachyonfx::fx;
+    use throbber_widgets_tui::Throbber;
+
     use throbber_widgets_tui::ThrobberState;
     use tokio::io::AsyncReadExt;
     use tokio::io::AsyncWriteExt;
-    
+
     use tokio::time::sleep;
     use tracing::debug;
     use tracing::{error, info};
@@ -378,7 +390,10 @@ pub mod main_ui {
         pub total_files_to_download: usize,
         pub downloaded_files: usize,
         pub download_progress: f64,
-        pub next_five_files: Vec<FileEntry>,
+        pub next_five_files: VecDeque<FileEntry>,
+        pub throbber_cancel: Option<Cancel>,
+        pub effects: EffectManager<()>,
+        pub elapsed: Instant,
     }
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
     pub enum InputMode {
@@ -393,6 +408,13 @@ pub mod main_ui {
             sftp: Arc<SftpSession>,
             session: Arc<AsyncMutex<Session>>,
         ) -> Self {
+            let mut effects: EffectManager<()> = EffectManager::default();
+            let fx = fx::expand(
+                fx::ExpandDirection::Vertical,
+                Style::default(),
+                EffectTimer::new(tachyonfx::Duration::from_millis(250), Interpolation::Linear),
+            );
+            effects.add_effect(fx);
             Self {
                 current_path,
                 table_state: TableState::default(),
@@ -411,7 +433,10 @@ pub mod main_ui {
                 session,
                 total_files_to_download: 0,
                 downloaded_files: 0,
-                next_five_files: Vec::new(),
+                next_five_files: VecDeque::new(),
+                throbber_cancel: None,
+                effects,
+                elapsed: Instant::now(),
             }
         }
 
@@ -522,6 +547,13 @@ pub mod main_ui {
             .as_ref() else {
                 unreachable!()
             };
+            let throbber = Throbber::default()
+                .label(format!(
+                    "Downloaded {:.0}/{}  ",
+                    state.downloaded_files, state.total_files_to_download
+                ))
+                .throbber_set(throbber_widgets_tui::ASCII);
+
             let progress_area = gauge_block.inner(rb_bottom_1).inner(Margin::new(1, 0));
             let para_area = gauge_block.inner(rb_bottom_2).inner(Margin::new(1, 0));
             let gauge = LineGauge::default()
@@ -529,10 +561,7 @@ pub mod main_ui {
                 .unfilled_style(ctx.theme.container_base())
                 // .block(gauge_block.clone().padding(Padding::horizontal(1)))
                 .ratio(state.download_progress)
-                .label(format!(
-                    "Downloaded {:.0}/{}  ",
-                    state.downloaded_files, state.total_files_to_download
-                ))
+                .label(throbber)
                 .line_set(CHARSET);
             let next_files = state
                 .next_five_files
@@ -544,7 +573,19 @@ pub mod main_ui {
                 .alignment(ratatui::layout::Alignment::Left)
                 .render(para_area, buf, &mut ParagraphState::default());
             gauge_block.title("Progress").render(rb_bottom, buf);
+
             gauge.render(progress_area, buf);
+            let el = state.elapsed.elapsed();
+            state.elapsed = Instant::now();
+            state
+                .effects
+                .process_effects(el.mul_f64(7.0).into(), buf, rb_bottom_1);
+            state
+                .effects
+                .process_effects(el.mul_f64(7.0).into(), buf, rb_bottom_2);
+            state
+                .effects
+                .process_effects(el.mul_f64(7.0).into(), buf, rb_bottom);
         } else {
             let hints = [
                 keybind("Tab", "Focus  "),
@@ -672,6 +713,15 @@ pub mod main_ui {
     ) -> Result<Control<AppEvent>, Error> {
         let r = match event {
             AppEvent::Event(event) => {
+                try_flow!(match event {
+                    ct_event!(key press CONTROL-'q') => {
+                        if let Some(cancel) = state.throbber_cancel.take() {
+                            cancel.cancel();
+                        }
+                        Control::Quit
+                    }
+                    _ => Control::Continue,
+                });
                 try_flow!(match state.input_state.handle(event, Regular) {
                     TextOutcome::TextChanged => {
                         if state.input_mode == InputMode::Filter {
@@ -790,14 +840,29 @@ pub mod main_ui {
             }
             AppEvent::DownloadStart => {
                 state.is_downloading = true;
+                let cancel = ctx.spawn_ext(|cancel, send| {
+                    loop {
+                        if cancel.is_canceled() {
+                            break;
+                        }
+                        send.send(Ok(Control::Event(AppEvent::Throb)))?;
+                        send.send(Ok(Control::Changed))?;
+                        thread::sleep(Duration::from_millis(500));
+                    }
+                    Ok(Control::Changed)
+                })?;
+                state.throbber_cancel = Some(cancel.0);
                 Control::Changed
             }
             AppEvent::DownloadEnd => {
                 state.is_downloading = false;
+                if let Some(cancel) = state.throbber_cancel.take() {
+                    cancel.cancel();
+                }
                 Control::Changed
             }
             AppEvent::UpdateNextFiveFiles(files) => {
-                state.next_five_files = files.to_vec();
+                state.next_five_files = files.to_vec().into();
                 Control::Changed
             }
             AppEvent::Gauge(progress) => {
@@ -892,10 +957,15 @@ pub mod main_ui {
                     let total = collected_snapshot.len() as f64;
                     chan.send(Ok(Control::Event(AppEvent::SetTotalFilesToDownload(total as usize)))).await?;
                     let mut progress = 0.0;
-                    let mut windows = collected_snapshot.windows(6);
+                    let mut windows = collected_snapshot.windows(5);
+                    let last_window = if let Some(window) = windows.clone().last() {
+                        window.to_vec()
+                    } else {
+                        collected_snapshot.to_vec()
+                    };
 
-                    for (i,entry) in collected_snapshot.iter().enumerate() {
-                        chan.send(Ok(Control::Event(AppEvent::Throb))).await?;
+
+                    for entry in collected_snapshot.clone() {
                         let file = file.clone();
                         let filename = entry.name().strip_prefix(&file).unwrap_or(entry.name()).replacen("/", "", 1).to_string();
                         let target_path = path.join(&filename);
@@ -909,14 +979,17 @@ pub mod main_ui {
                         })?;
                         let _ = reply_rx.await.unwrap();
                         progress += 1.0;
-                        if total - i as f64 >5.0                        {
-                            let window = windows.next().unwrap();
+                        if let Some(window) = windows.next() {
                             chan.send(Ok(Control::Event(AppEvent::UpdateNextFiveFiles(window.to_vec())))).await?;
+                        } else {
+                            let mut vec = last_window.to_vec();
+                            vec.remove(0);
+                            chan.send(Ok(Control::Event(AppEvent::UpdateNextFiveFiles(vec)))).await?;
                         }
                         chan.send(Ok(Control::Event(AppEvent::Gauge(progress/ total)))).await?;
 
 
-                        sleep(Duration::from_millis(50)).await;
+                        //sleep(Duration::from_millis(50)).await;
                     }
                     chan.send(Ok(Control::Event(AppEvent::DownloadEnd))).await?;
                     Ok(Control::Event(AppEvent::AsyncTick(300)))
@@ -954,6 +1027,7 @@ pub mod main_ui {
                 state.current_path = path.clone();
                 Control::Continue
             }
+
             _ => Control::Continue,
         };
 
