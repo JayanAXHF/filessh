@@ -45,9 +45,6 @@ fn main() -> Result<()> {
     })?;
     let sftp = Arc::new(sftp);
     let session = Arc::new(AsyncMutex::new(session));
-    //  Run the parallel walker with a visitor closure
-    let themes = salsa_themes();
-    println!("themes: {:?}", themes);
     crate::tui::tui(cli.path.display().to_string(), cli, rt, sftp, session)?;
     eyre::Ok(())
 }

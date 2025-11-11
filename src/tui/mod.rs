@@ -34,7 +34,7 @@ pub fn tui(
     session: Arc<Mutex<Session>>,
 ) -> Result<(), Error> {
     let config = Config::new(cli);
-    let theme = create_theme("Base16 Dark").expect("theme");
+    let theme = create_theme("Imperial Dark").expect("theme");
     let mut global = Global::new(config, theme);
     let mut state = Scenery::new(current_path, sftp, session);
 
