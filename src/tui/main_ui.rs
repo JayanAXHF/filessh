@@ -792,8 +792,12 @@ fn start_sftp_worker(session: Arc<AsyncMutex<Session>>) -> mpsc::UnboundedSender
                                 .unwrap()
                                 .read_to_end(&mut buf)
                                 .await;
-                            info!("Read result: {:?}", read);
 
+                            if read.is_err() {
+                                error!("Read result: {:?}", read);
+                            } else {
+                                info!("Read result: {:?}", read);
+                            }
                             let mut file = tokio::fs::File::create(local_path).await?;
                             file.write_all(&buf).await?;
                             file.flush().await?;
