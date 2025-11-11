@@ -1,3 +1,8 @@
+## [0.1.1] - 2025-11-11
+
+### Miscellaneous Tasks
+
+- Removed useless print messages
 ## [0.1.0] - 2025-11-11
 
 ### Features
@@ -27,4 +32,4 @@
 
 ### Miscellaneous Tasks
 
-- Added details to Cargo.toml
+- *(release)* V0.1.0
