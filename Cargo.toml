@@ -37,3 +37,9 @@ tracing = "0.1.41"
 tracing-error = "0.2.1"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 tui-logger = { version = "0.17.4", features = ["tracing", "tracing-subscriber", "tracing-support"] }
+
+[profile.release]
+codegen-units = 1 # Allows compiler to perform better optimization.
+lto = true # Enables Link-time Optimization.
+opt-level = "s" # Prioritizes small binary size. Use `3` if you prefer speed.
+strip = true # Ensures debug symbols are removed.
