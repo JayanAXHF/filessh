@@ -2,6 +2,14 @@
 name = "filessh"
 version = "0.1.0"
 edition = "2024"
+description = "A fast and convenient TUI file browser for remote servers "
+authors = ["JayanAXHF <sunil.chdry@gmail.com>"]
+license = "MIT"
+homepage = "https://github.com/JayanAXHF/filessh"
+repository = "https://github.com/JayanAXHF/filessh"
+readme = "README.md"
+keywords = ["tui", "cli", "sftp", "ssh", "file-browser"]
+categories = ["command-line-utilities", "command-line-interface", "filesystem"]
 
 [dependencies]
 async-lock = "3.4.1"

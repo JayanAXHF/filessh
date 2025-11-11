@@ -20,3 +20,11 @@
 ### Refactor
 
 - Separated tui.rs into separate module
+
+### Documentation
+
+- Committeed CHANGELOG.MD
+
+### Miscellaneous Tasks
+
+- Added details to Cargo.toml
