@@ -3,6 +3,8 @@
 ### Documentation
 
 - Added the GIF to the README
+- *(README)* Added built with ratatui label
+- *(README)* Added badges to the README
 ## [0.1.2] - 2025-11-12
 
 ### Features
