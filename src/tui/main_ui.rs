@@ -127,6 +127,7 @@ pub enum InputMode {
     DownloadPath,
     ConfirmDelete,
     MoveEntry,
+    _CopyEntry,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]

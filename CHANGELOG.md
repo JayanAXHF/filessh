@@ -1,3 +1,9 @@
+## [0.2.0] - 2025-11-12
+
+### Features
+
+- *(TUI)* Added delete feature
+- *(TUI)* Added ability to move files.
 ## [0.1.3] - 2025-11-12
 
 ### Documentation
@@ -5,6 +11,10 @@
 - Added the GIF to the README
 - *(README)* Added built with ratatui label
 - *(README)* Added badges to the README
+
+### Miscellaneous Tasks
+
+- Release v0.1.3
 ## [0.1.2] - 2025-11-12
 
 ### Features
