@@ -5,7 +5,6 @@ use crate::ssh::Session;
 use async_lock::Mutex as AsyncMutex;
 use clap::Parser;
 use color_eyre::eyre::{self, Result};
-use rat_theme3::salsa_themes;
 use tracing::info;
 
 mod cli;
