@@ -37,6 +37,10 @@ use rat_widget::text_input::TextInput;
 use rat_widget::text_input::TextInputState;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm;
+use ratatui::crossterm::ExecutableCommand;
+use ratatui::crossterm::terminal::EnterAlternateScreen;
+use ratatui::crossterm::terminal::disable_raw_mode;
+use ratatui::crossterm::terminal::enable_raw_mode;
 use ratatui::layout::Flex;
 use ratatui::layout::Margin;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -61,6 +65,7 @@ use russh_sftp::client::SftpSession;
 use russh_sftp::protocol::FileType;
 use std::collections::VecDeque;
 use std::f64;
+use std::io::stdout;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -119,6 +124,7 @@ pub struct MainUI {
     pub details_para_state: ParagraphState,
     pub detail_window_mode: DetailWindowMode,
     pub current_file_content: Option<String>,
+    pub in_editor: bool,
 }
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum InputMode {
@@ -172,6 +178,7 @@ impl MainUI {
             details_para_state: ParagraphState::default(),
             detail_window_mode: DetailWindowMode::default(),
             current_file_content: None,
+            in_editor: false,
         }
     }
 
@@ -348,6 +355,7 @@ pub fn render(
             keybind("Enter", "View Content  "),
             keybind("x", "Delete  "),
             keybind("m", "Move  "),
+            keybind("Enter e", "Edit  "),
         ]
         .iter()
         .flatten()
@@ -589,6 +597,9 @@ pub fn event(
                             ctx.focus().focus(&state.input_state);
                             Control::Changed
                         }
+                        ct_event!(key press 'e') => {
+                            Control::Event(AppEvent::SpawnExternalEditor(state.current_path.clone().join(state.get_file_entries()[state.table_state.selected_checked().unwrap_or_default()].name())))
+                        }
                         ct_event!(keycode press Enter) => {
                         if let Some(row_idx) = state.table_state.selected() && let Some(row) = state.get_file_entries().get(row_idx) && row.is_file() {
 
@@ -753,6 +764,38 @@ pub fn event(
         AppEvent::Throb => {
             debug!("Throbber");
             state.throbber.calc_next();
+            Control::Changed
+        }
+        AppEvent::SpawnExternalEditor(_) => {
+            if let Some(template) = state.current_file_content.clone() {
+                state.in_editor = true;
+                stdout().execute(crossterm::terminal::LeaveAlternateScreen)?;
+                disable_raw_mode()?;
+                let edited = edit::edit(template)?;
+                let session = Arc::clone(&state.session);
+                let current_path = state.current_path.clone();
+                let current_file = state.get_file_entries()
+                    [state.table_state.selected_checked().unwrap_or_default()]
+                .clone();
+
+                let path = current_path.join(current_file.name());
+                ctx.spawn_async_ext(async move |chan| {
+                    chan.send(Ok(Control::Event(AppEvent::UpdateContent(Some(
+                        edited.clone(),
+                    )))))
+                    .await?;
+                    let mut session = session.lock().await;
+                    let sftp = session.sftp().await?;
+                    let mut f = sftp.create(path.clone()).await?;
+                    f.write_all(edited.as_bytes()).await?;
+                    sftp.close().await?;
+                    Ok(Control::Event(AppEvent::AsyncTick(300)))
+                });
+                stdout().execute(EnterAlternateScreen)?;
+                enable_raw_mode()?;
+                ctx.terminal().borrow_mut().clear()?;
+                state.in_editor = false;
+            }
             Control::Changed
         }
         AppEvent::DownloadStart => {

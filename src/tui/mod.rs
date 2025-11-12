@@ -111,6 +111,7 @@ pub enum AppEvent {
     SetTotalFilesToDownload(usize),
     UpdateContent(Option<String>),
     UpdateFiles(Vec<FileEntry>),
+    SpawnExternalEditor(String),
     DownloadFile(String, PathBuf, Option<String>),
     DownloadFolder(String, PathBuf),
     DeleteEntry(FileEntry),
@@ -218,6 +219,9 @@ pub fn event(
     ctx: &mut Global,
 ) -> Result<Control<AppEvent>, Error> {
     let t0 = SystemTime::now();
+    if state.async1.in_editor {
+        return Ok(Control::Changed);
+    }
 
     let mut r = match event {
         AppEvent::Event(event) => {
