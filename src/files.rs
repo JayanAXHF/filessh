@@ -1,3 +1,5 @@
+use std::path::MAIN_SEPARATOR;
+
 use derive_getters::Getters;
 use rat_ftable::TableData;
 use rat_widget::paragraph::Paragraph;
@@ -260,4 +262,36 @@ fn format_timestamp(timestamp: Option<u32>) -> Option<String> {
     let datetime = chrono::DateTime::from_timestamp(timestamp.into(), 0)?;
     let fmt_datetime = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
     Some(fmt_datetime)
+}
+
+pub trait JoinablePaths {
+    fn join(&self, other: &str) -> String;
+}
+
+impl JoinablePaths for String {
+    fn join(&self, child: &str) -> String {
+        let base = self;
+
+        // Normalize the separator for this platform
+        let sep = MAIN_SEPARATOR;
+
+        // Handle empty base or child cases
+        if base.is_empty() {
+            return child.to_string();
+        }
+        if child.is_empty() {
+            return base.to_string();
+        }
+
+        // If the child is absolute, return it as-is
+        if child.starts_with(sep) || child.starts_with('/') || child.starts_with('\\') {
+            return child.to_string();
+        }
+
+        // Trim trailing separator from base, and leading separator from child
+        let mut result = base.trim_end_matches(['/', '\\']).to_string();
+        result.push(sep);
+        result.push_str(child.trim_start_matches(['/', '\\']));
+        result
+    }
 }
