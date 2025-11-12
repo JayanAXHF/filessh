@@ -114,6 +114,7 @@ pub enum AppEvent {
     DownloadFile(String, PathBuf, Option<String>),
     DownloadFolder(String, PathBuf),
     DeleteEntry(FileEntry),
+    MoveEntry(String, String),
     Rendered,
     Message(String),
     Status(usize, String),
