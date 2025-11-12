@@ -113,6 +113,7 @@ pub enum AppEvent {
     UpdateFiles(Vec<FileEntry>),
     DownloadFile(String, PathBuf, Option<String>),
     DownloadFolder(String, PathBuf),
+    DeleteEntry(FileEntry),
     Rendered,
     Message(String),
     Status(usize, String),

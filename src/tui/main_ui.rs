@@ -57,6 +57,7 @@ use ratatui::widgets::StatefulWidget;
 use ratatui::widgets::Widget;
 use ratatui::widgets::block;
 use russh_sftp::client::SftpSession;
+use russh_sftp::protocol::FileType;
 use std::collections::VecDeque;
 use std::f64;
 use std::path::PathBuf;
@@ -123,6 +124,7 @@ pub enum InputMode {
     #[default]
     Filter,
     DownloadPath,
+    ConfirmDelete,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -408,6 +410,13 @@ pub fn render(
                 file.name()
             )
         }
+        InputMode::ConfirmDelete => {
+            let current_item = state.table_state.selected_checked().unwrap_or_default();
+            let file = state.get_file_entries()[current_item].clone();
+
+            format!("[3] rm -rf [{}/{}]", state.current_path, file.name())
+        }
+        _ => String::new(),
     };
     let input = TextInput::new().style(ctx.theme.container_base()).block(
             Block::bordered()
@@ -516,21 +525,6 @@ pub fn event(
                 }
                 _ => Control::Continue,
             });
-            try_flow!(match state.input_state.handle(event, Regular) {
-                TextOutcome::TextChanged => {
-                    if state.input_mode == InputMode::Filter {
-                        let filter: String = state.input_state.value();
-                        state.filtered_file_entries = state
-                            .current_file_entries
-                            .iter()
-                            .filter(|file| file.name().contains(&filter))
-                            .cloned()
-                            .collect();
-                    }
-                    Control::Changed
-                }
-                v => v.into(),
-            });
             try_flow!(state.details_para_state.handle(event, Regular));
 
             try_flow!(match_focus!(
@@ -560,6 +554,12 @@ pub fn event(
                             state.current_file_content = None;
                         state.detail_window_mode = DetailWindowMode::Details;
                             state.table_state.move_up(1);
+                            Control::Changed
+                        }
+                        ct_event!(key press 'x') => {
+                            state.input_mode = InputMode::ConfirmDelete;
+                            state.input_state.set_value("Delete file [Y/n]?".to_string());
+                            ctx.focus().focus(&state.input_state);
                             Control::Changed
                         }
                         ct_event!(keycode press Enter) => {
@@ -631,6 +631,31 @@ pub fn event(
                     }
                 },
                 state.input_state => {
+                    if state.input_mode == InputMode::ConfirmDelete {
+                        try_flow!(
+                            match event {
+                                ct_event!(key press 'y') => {
+                                    if let Some(idx) = state.table_state.clone().selected() && let Some(file) = state.get_file_entries().get(idx){
+                                        let file = file.clone();
+                                        state.input_state.clear();
+                                        ctx.focus().first();
+                                        Control::Event(AppEvent::DeleteEntry(file.clone()))
+                                    } else {
+                                        Control::Continue
+                                    }
+
+                                }
+                                ct_event!(key press 'n') => {
+                                    state.input_state.clear();
+                                    ctx.focus().focus(&state.table_state);
+                                    state.input_mode = InputMode::Filter;
+                                    Control::Changed
+                                }
+
+                                _ => Control::Continue
+                            }
+                        )
+                    }
 
                     if state.input_mode == InputMode::DownloadPath {
                         match event {
@@ -661,6 +686,21 @@ pub fn event(
 
                 else => Control::Continue
             ));
+            try_flow!(match state.input_state.handle(event, Regular) {
+                TextOutcome::TextChanged => {
+                    if state.input_mode == InputMode::Filter {
+                        let filter: String = state.input_state.value();
+                        state.filtered_file_entries = state
+                            .current_file_entries
+                            .iter()
+                            .filter(|file| file.name().contains(&filter))
+                            .cloned()
+                            .collect();
+                    }
+                    Control::Changed
+                }
+                v => v.into(),
+            });
             Control::Continue
         }
         AppEvent::AsyncMsg(s) => {
@@ -833,6 +873,32 @@ pub fn event(
                 });
             Control::Continue
         }
+        AppEvent::DeleteEntry(file) => {
+            let session = Arc::clone(&state.session);
+            let file = file.clone();
+            let curr_path = state.current_path.clone();
+            let fname = curr_path.clone() + "/" + file.name();
+            ctx.spawn_async_ext(|chan| async move {
+                let mut session = session.lock().await;
+                let sftp = session.sftp().await?;
+                info!(fname, "Deleting");
+                match file.type_() {
+                    FileType::File => {
+                        sftp.remove_file(fname).await?;
+                    }
+                    FileType::Dir => {
+                        remove_dir_recursive(&sftp, &fname).await?;
+                    }
+                    _ => {}
+                }
+                chan.send(Ok(Control::Event(AppEvent::ChangeDir(curr_path.clone()))))
+                    .await?;
+
+                Ok(Control::Changed)
+            });
+
+            Control::Changed
+        }
         AppEvent::ChangeDir(path) => {
             let path = if !path.is_empty() {
                 path.clone()
@@ -940,4 +1006,27 @@ fn keybind<'a>(key: &'a str, description: &str) -> Vec<Span<'a>> {
             Style::default().fg(Color::White),
         ),
     ]
+}
+
+async fn remove_dir_recursive(sftp: &SftpSession, root: &str) -> Result<()> {
+    let mut stack = vec![root.to_string()];
+
+    while let Some(path) = stack.pop() {
+        let entries = sftp.read_dir(&path).await?;
+        for entry in entries {
+            let attrs = entry.metadata();
+            let name = entry.file_name();
+            let child_path = format!("{}/{}", path, name);
+            if attrs.is_dir() {
+                // Push directory for later deletion
+                stack.push(child_path.clone());
+            } else {
+                sftp.remove_file(&child_path).await?;
+            }
+        }
+        // Once children are deleted, remove dir
+        sftp.remove_dir(&path).await?;
+    }
+
+    Ok(())
 }
