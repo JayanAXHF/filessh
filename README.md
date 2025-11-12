@@ -1,4 +1,7 @@
-# filessh
+# FileSSH
+```md
+[![Built With Ratatui](https://ratatui.rs/built-with-ratatui/badge.svg)](https://ratatui.rs/)
+```
 
 A TUI-based file explorer for SSH servers.
 
