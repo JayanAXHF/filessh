@@ -1,5 +1,6 @@
 use crate::files::FileDataSlice;
 use crate::files::FileEntry;
+use crate::files::JoinablePaths;
 use crate::files::ProgressDataSlice;
 use crate::par_dir_traversal::WalkParallel;
 use crate::par_dir_traversal::WalkState;
@@ -125,6 +126,7 @@ pub enum InputMode {
     Filter,
     DownloadPath,
     ConfirmDelete,
+    MoveEntry,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -416,6 +418,12 @@ pub fn render(
 
             format!("[3] rm -rf [{}/{}]", state.current_path, file.name())
         }
+        InputMode::MoveEntry => {
+            let current_item = state.table_state.selected_checked().unwrap_or_default();
+            let file = state.get_file_entries()[current_item].clone();
+
+            format!("[3] mv [{}/{}] to Path", state.current_path, file.name())
+        }
         _ => String::new(),
     };
     let input = TextInput::new().style(ctx.theme.container_base()).block(
@@ -515,15 +523,24 @@ pub fn event(
                     state.input_state.clear();
                     Control::Changed
                 }
-                ct_event!(key press '1') => {
-                    ctx.focus().focus(&state.table_state);
-                    Control::Changed
-                }
-                ct_event!(key press '2') => {
-                    ctx.focus().focus(&state.details_para_state);
-                    Control::Changed
-                }
                 _ => Control::Continue,
+            });
+            try_flow!(if let Some(focused) = ctx.focus().focused()
+                && focused != state.input_state.focus
+            {
+                match event {
+                    ct_event!(key press '1') => {
+                        ctx.focus().focus(&state.table_state);
+                        Control::Changed
+                    }
+                    ct_event!(key press '2') => {
+                        ctx.focus().focus(&state.details_para_state);
+                        Control::Changed
+                    }
+                    _ => Control::Continue,
+                }
+            } else {
+                Control::Continue
             });
             try_flow!(state.details_para_state.handle(event, Regular));
 
@@ -562,6 +579,11 @@ pub fn event(
                             ctx.focus().focus(&state.input_state);
                             Control::Changed
                         }
+                        ct_event!(key press 'm') => {
+                            state.input_mode = InputMode::MoveEntry;
+                            ctx.focus().focus(&state.input_state);
+                            Control::Changed
+                        }
                         ct_event!(keycode press Enter) => {
                         if let Some(row_idx) = state.table_state.selected() && let Some(row) = state.get_file_entries().get(row_idx) && row.is_file() {
 
@@ -570,7 +592,7 @@ pub fn event(
                                 let row = row.clone();
                                 ctx.spawn_async_ext(async move |_| {
                                     let mut file = sftp
-                                        .open(current_path.clone() + "/" + row.name())
+                                        .open(current_path.clone().join(row.name()))
                                     .await?;
                                     let mut buf = Vec::new();
                                     file.read_to_end(&mut buf).await?;
@@ -631,7 +653,8 @@ pub fn event(
                     }
                 },
                 state.input_state => {
-                    if state.input_mode == InputMode::ConfirmDelete {
+                    match state.input_mode {
+                        InputMode::ConfirmDelete => {
                         try_flow!(
                             match event {
                                 ct_event!(key press 'y') => {
@@ -655,9 +678,8 @@ pub fn event(
                                 _ => Control::Continue
                             }
                         )
-                    }
-
-                    if state.input_mode == InputMode::DownloadPath {
+                        }
+                        InputMode::DownloadPath => {
                         match event {
                             ct_event!(keycode press Enter) => {
                                 let path:String = state.input_state.value();
@@ -670,7 +692,7 @@ pub fn event(
                                         return Ok(Control::Continue);
                                     };
                                     let path = path.join(file.name());
-                                    let name = state.current_path.clone() + "/" + file.name();
+                                    let name = state.current_path.clone().join(file.name());
                                     if file.is_dir() {
                                         return Ok(Control::Event(AppEvent::DownloadFolder(name, path)));
                                     }
@@ -679,6 +701,22 @@ pub fn event(
                             }
                             _ => {}
                         }
+                        }
+                        InputMode::MoveEntry => {
+                            match event {
+                                ct_event!(keycode press Enter) => {
+                                    let old_path = state.current_path.clone().join(state.get_file_entries()[state.table_state.selected_checked().unwrap_or_default()].name());
+                                    let new_path:String = state.current_path.clone().join(&state.input_state.value::<String>());
+                                    ctx.focus().first();
+                                    state.input_state.clear();
+                                    state.input_mode = InputMode::default();
+                                    return Ok(Control::Event(AppEvent::MoveEntry(old_path, new_path)));
+
+                                }
+                                _ => {}
+                            }
+                        }
+                        _ => {}
                     }
 
                     Control::Continue
@@ -746,6 +784,21 @@ pub fn event(
         AppEvent::Gauge(progress) => {
             state.download_progress = *progress;
             state.downloaded_files += 1;
+            Control::Changed
+        }
+        AppEvent::MoveEntry(oldpath, newpath) => {
+            let session = Arc::clone(&state.session);
+            let oldpath = oldpath.clone();
+            let newpath = newpath.clone();
+            let current_path = state.current_path.clone();
+            ctx.spawn_async_ext(|_| async move {
+                let mut session = session.lock().await;
+                let sftp = session.sftp().await?;
+                let newpath = sftp.canonicalize(newpath.clone()).await.unwrap_or(newpath);
+                info!(oldpath, newpath, "Moving");
+                sftp.rename(oldpath, newpath).await?;
+                Ok(Control::Event(AppEvent::ChangeDir(current_path)))
+            });
             Control::Changed
         }
         AppEvent::DownloadFile(name, path, filename) => {
@@ -850,7 +903,7 @@ pub fn event(
 
                         let (reply_tx, reply_rx) = oneshot::channel();
                         tx.send(SftpCmd::ReadFile {
-                            remote_path: file.clone() + "/" + &filename,
+                            remote_path: file.clone().join(&filename),
                             local_path: target_path,
                             reply: reply_tx,
                         })?;
@@ -877,7 +930,7 @@ pub fn event(
             let session = Arc::clone(&state.session);
             let file = file.clone();
             let curr_path = state.current_path.clone();
-            let fname = curr_path.clone() + "/" + file.name();
+            let fname = curr_path.join(file.name());
             ctx.spawn_async_ext(|chan| async move {
                 let mut session = session.lock().await;
                 let sftp = session.sftp().await?;
@@ -907,6 +960,8 @@ pub fn event(
             };
             info!("changing dir to {}", path);
             let sftp = Arc::clone(&state.sftp);
+            state.input_state.clear();
+            state.input_mode = InputMode::default();
 
             ctx.spawn_async_ext(|chan| async move {
                 let files = sftp.read_dir(path).await?;
@@ -924,6 +979,8 @@ pub fn event(
         }
         AppEvent::UpdateFiles(files) => {
             state.current_file_entries = files.to_vec();
+            state.input_state.clear();
+            state.input_mode = InputMode::default();
             Control::Changed
         }
         AppEvent::UpdateCurrentPath(path) => {
