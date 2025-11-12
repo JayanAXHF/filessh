@@ -68,6 +68,7 @@ commit_parsers = [
     { message = "^test", group = "<!-- 6 -->Testing" },
     { message = "^chore\\(release\\): prepare for", skip = true },
     { message = "^chore\\(deps.*\\)", skip = true },
+    { message = "^chore\\(ignore\\)", skip = true },
     { message = "^chore\\(pr\\)", skip = true },
     { message = "^chore\\(pull\\)", skip = true },
     { message = "^chore|^ci", group = "<!-- 7 -->Miscellaneous Tasks" },
