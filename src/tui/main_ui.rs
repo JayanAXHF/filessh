@@ -157,7 +157,10 @@ impl MainUI {
         let fx = fx::expand(
             fx::ExpandDirection::Vertical,
             Style::default(),
-            EffectTimer::new(tachyonfx::Duration::from_millis(250), Interpolation::Linear),
+            EffectTimer::new(
+                tachyonfx::Duration::from_millis(4000),
+                Interpolation::Linear,
+            ),
         );
         effects.add_effect(fx);
         Self {
@@ -335,15 +338,9 @@ pub fn render(
 
         gauge.render(progress_area, buf);
         state.elapsed = Instant::now();
-        state
-            .effects
-            .process_effects(el.mul_f64(7.0).into(), buf, rb_bottom_1);
-        state
-            .effects
-            .process_effects(el.mul_f64(7.0).into(), buf, rb_bottom_2);
-        state
-            .effects
-            .process_effects(el.mul_f64(7.0).into(), buf, rb_bottom);
+        state.effects.process_effects(el.into(), buf, rb_bottom_1);
+        state.effects.process_effects(el.into(), buf, rb_bottom_2);
+        state.effects.process_effects(el.into(), buf, rb_bottom);
     } else {
         let hints = [
             keybind("Tab", "Focus  "),
