@@ -1,4 +1,10 @@
 # Changelog
+## [0.1.9] - 2025-11-14
+
+### Documentation
+
+- Update the README to include license information and added the relevant license files.
+
 ## [0.1.8] - 2025-11-14
 
 ### Features
