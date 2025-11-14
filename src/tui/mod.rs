@@ -16,10 +16,13 @@ use rat_widget::layout::layout_middle;
 use rat_widget::msgdialog::{MsgDialog, MsgDialogState};
 use rat_widget::statusline::{StatusLine, StatusLineState};
 use ratatui::buffer::Buffer;
-use ratatui::crossterm;
+use ratatui::crossterm::cursor::Show;
+use ratatui::crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
+use ratatui::crossterm::{self, ExecutableCommand};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::widgets::StatefulWidget;
 use russh_sftp::client::SftpSession;
+use std::io::stdout;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -287,4 +290,15 @@ pub fn error(
     error!("{:?}", &*event);
     state.error_dlg.append(format!("{:?}", &*event).as_str());
     Ok(Control::Changed)
+}
+
+impl Drop for Scenery {
+    fn drop(&mut self) {
+        if let Some(cancel) = self.async1.throbber_cancel.take() {
+            cancel.cancel();
+        }
+        disable_raw_mode().unwrap();
+        stdout().execute(LeaveAlternateScreen).unwrap();
+        stdout().execute(Show).unwrap();
+    }
 }

@@ -81,6 +81,7 @@ use tachyonfx::EffectTimer;
 use tachyonfx::Interpolation;
 use tachyonfx::fx;
 use throbber_widgets_tui::Throbber;
+use tracing::warn;
 
 use throbber_widgets_tui::ThrobberState;
 use tokio::io::AsyncReadExt;
@@ -128,6 +129,7 @@ pub struct MainUI {
     pub details_para_state: ParagraphState,
     pub detail_window_mode: DetailWindowMode,
     pub current_file_content: Option<String>,
+    pub in_multi_key_combo_new: bool,
     pub in_editor: bool,
 }
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -138,6 +140,8 @@ pub enum InputMode {
     ConfirmDelete,
     MoveEntry,
     _CopyEntry,
+    CreateNewFile,
+    CreateNewFolder,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -185,6 +189,7 @@ impl MainUI {
             details_para_state: ParagraphState::default(),
             detail_window_mode: DetailWindowMode::default(),
             current_file_content: None,
+            in_multi_key_combo_new: false,
             in_editor: false,
         }
     }
@@ -535,6 +540,28 @@ pub fn event(
 ) -> Result<Control<AppEvent>, Error> {
     let r = match event {
         AppEvent::Event(event) => {
+            if state.in_multi_key_combo_new {
+                try_flow!(match event {
+                    ct_event!(key press 'f') => {
+                        state.input_mode = InputMode::CreateNewFile;
+                        ctx.focus().focus(&state.input_state);
+                        Control::Changed
+                    }
+                    ct_event!(key press 'd') => {
+                        state.input_mode = InputMode::CreateNewFolder;
+                        ctx.focus().focus(&state.input_state);
+                        Control::Changed
+                    }
+                    _ => {
+                        if state.input_mode != InputMode::CreateNewFolder
+                            || state.input_mode != InputMode::CreateNewFile
+                        {
+                            warn!("Not a valid key combination");
+                        }
+                        Control::Continue
+                    }
+                })
+            }
             try_flow!(match event {
                 ct_event!(key press CONTROL-'q') => {
                     if let Some(cancel) = state.throbber_cancel.take() {
@@ -602,6 +629,10 @@ pub fn event(
                             state.input_mode = InputMode::ConfirmDelete;
                             state.input_state.set_value("Delete file [Y/n]?".to_string());
                             ctx.focus().focus(&state.input_state);
+                            Control::Changed
+                        }
+                        ct_event!(key press 'n') => {
+                            state.in_multi_key_combo_new = true;
                             Control::Changed
                         }
                         ct_event!(key press 'm') => {
@@ -744,6 +775,55 @@ pub fn event(
                                     state.input_mode = InputMode::default();
                                     return Ok(Control::Event(AppEvent::MoveEntry(old_path, new_path)));
 
+                                }
+                                _ => {}
+                            }
+                        }
+                        InputMode::CreateNewFile => {
+                            match event {
+                                ct_event!(keycode press Enter) => {
+                                    let curr_dir = state.current_path.clone();
+                                    let file_name = state.input_state.value::<String>();
+                                    let path = curr_dir.join(&file_name);
+                                    let session = Arc::clone(&state.session);
+                                    ctx.spawn_async_ext(|chan| async move {
+                                        let mut session = session.lock().await;
+                                        let sftp = session.sftp().await?;
+                                        let path = sftp.canonicalize(path.clone()).await?;
+                                        info!(path, "Creating file");
+                                        let mut file = sftp.create(path.clone()).await?;
+                                        file.write_all(b"").await?;
+                                        file.flush().await?;
+                                        file.sync_all().await?;
+                                        info!(path, "Created file");
+                                        chan.send(Ok(Control::Event(AppEvent::ChangeDir(curr_dir)))).await?;
+                                        Ok(Control::Event(AppEvent::AsyncTick(300)))
+                                    });
+                                    state.input_state.clear();
+                                    state.input_mode = InputMode::default();
+                                    state.in_multi_key_combo_new = false;
+                                }
+                                _ => {}
+                            }
+                        }
+                        InputMode::CreateNewFolder => {
+                            match event {
+                                ct_event!(keycode press Enter) => {
+                                    let curr_dir = state.current_path.clone();
+                                    let file_name = state.input_state.value::<String>();
+                                    let path = curr_dir.join(&file_name);
+                                    let session = Arc::clone(&state.session);
+                                    ctx.spawn_async_ext(|chan| async move {
+                                        let mut session = session.lock().await;
+                                        let sftp = session.sftp().await?;
+                                        let path = sftp.canonicalize(path.clone()).await?;
+                                        sftp.create_dir(path.clone()).await?;
+                                        chan.send(Ok(Control::Event(AppEvent::ChangeDir(curr_dir)))).await?;
+                                        Ok(Control::Event(AppEvent::AsyncTick(300)))
+                                    });
+                                    state.input_state.clear();
+                                    state.input_mode = InputMode::default();
+                                    state.in_multi_key_combo_new = false;
                                 }
                                 _ => {}
                             }
@@ -993,7 +1073,7 @@ pub fn event(
                             local_path: target_path,
                             reply: reply_tx,
                         })?;
-                        let _ = reply_rx.await.unwrap();
+                        let _ = reply_rx.await?;
                         progress += 1.0;
                         if let Some(window) = windows.next() {
                             chan.send(Ok(Control::Event(AppEvent::UpdateNextFiveFiles(window.to_vec())))).await?;
@@ -1106,15 +1186,10 @@ fn start_sftp_worker(session: Arc<AsyncMutex<Session>>) -> mpsc::UnboundedSender
                             info!("Opening remote file {:?}", remote_path);
                             let sftp = session.sftp().await?;
                             info!("Got SFTP channel");
-                            let mut remote_file = sftp.open(&remote_path).await;
+                            let mut remote_file = sftp.open(&remote_path).await?;
                             info!("Opened remote file");
                             let mut buf = Vec::new();
-                            let read = remote_file
-                                .as_mut()
-                                .ok()
-                                .unwrap()
-                                .read_to_end(&mut buf)
-                                .await;
+                            let read = remote_file.read_to_end(&mut buf).await;
 
                             if read.is_err() {
                                 error!("Read result: {:?}", read);
