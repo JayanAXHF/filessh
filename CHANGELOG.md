@@ -4,7 +4,6 @@
 ### Documentation
 
 - Update the README to include license information and added the relevant license files.
-
 ## [0.1.8] - 2025-11-14
 
 ### Features
@@ -18,10 +17,6 @@
 ### Documentation
 
 - *(changelog)* Changed CHANGELOG format to include title
-
-### Miscellaneous Tasks
-
-- Release v0.1.8
 ## [0.1.7] - 2025-11-13
 
 ### Features
@@ -37,39 +32,23 @@
 ### Documentation
 
 - *(README)* Added features subsection to readme
-
-### Miscellaneous Tasks
-
-- Release v0.1.7
 ## [0.1.6] - 2025-11-13
 
 ### Features
 
 - *(SSH)* Added the feature to access an ssh session quickly from the browser.
-
-### Miscellaneous Tasks
-
-- Release v0.1.6
 ## [0.1.5] - 2025-11-12
 
 ### Features
 
 - *(TUI)* Updated keybind hints
 - *(TUI)* Added the ability to edit files in an external editor.
-
-### Miscellaneous Tasks
-
-- Release v0.1.5
 ## [0.1.4] - 2025-11-12
 
 ### Features
 
 - *(TUI)* Added delete feature
 - *(TUI)* Added ability to move files.
-
-### Miscellaneous Tasks
-
-- Release v0.1.4
 ## [0.1.3] - 2025-11-12
 
 ### Documentation
@@ -77,10 +56,6 @@
 - Added the GIF to the README
 - *(README)* Added built with ratatui label
 - *(README)* Added badges to the README
-
-### Miscellaneous Tasks
-
-- Release v0.1.3
 ## [0.1.2] - 2025-11-12
 
 ### Features
@@ -94,10 +69,6 @@
 ### Styling
 
 - Formatted Changelog
-
-### Miscellaneous Tasks
-
-- Release v0.1.2
 ## [0.1.1] - 2025-11-11
 
 ### Miscellaneous Tasks
