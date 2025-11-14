@@ -5,7 +5,9 @@
 ![GitHub Tag](https://img.shields.io/github/v/tag/jayanaxhf/filessh)
 
 
-A TUI-based file explorer for SSH servers.
+A TUI-based file explorer for SSH servers, which allows you to browse and manage files on a remote server, edit them in-place, and recursively download directories with parallel directory traversal. It also has the ability to quickly spawn SSH sessions to paths on the remote server.
+
+Dual-licensed under MIT or the [UNLICENSE](https://unlicense.org/).
 
 ![Made with VHS](https://vhs.charm.sh/vhs-3VcUb6HOgvuo8mtaeDbRSe.gif)
 
