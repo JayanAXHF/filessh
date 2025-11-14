@@ -1,10 +1,10 @@
 [package]
 name = "filessh"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2024"
 description = "A fast and convenient TUI file browser for remote servers "
 authors = ["JayanAXHF <sunil.chdry@gmail.com>"]
-license = "MIT OR UNLICENSE"
+license = "Unlicense OR MIT"
 homepage = "https://github.com/JayanAXHF/filessh"
 repository = "https://github.com/JayanAXHF/filessh"
 readme = "README.md"
