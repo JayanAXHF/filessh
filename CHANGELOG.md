@@ -1,4 +1,10 @@
 # Changelog
+## [0.1.10] - 2025-11-15
+
+### Other
+
+- Fix typo in README.md
+
 ## [0.1.9] - 2025-11-14
 
 ### Documentation
