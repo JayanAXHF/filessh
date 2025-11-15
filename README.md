@@ -41,7 +41,7 @@ cargo install --locked filessh
 filessh [OPTIONS] <HOST> <PATH>
 ```
 ### Features
-1. Modift, delete and browse files on a remote server
+1. Modify, delete and browse files on a remote server
 2. Recursively download directories with parallel directory traversal
 3. Quickly open SSH sessions to directories.
 
