@@ -17,10 +17,12 @@ use rat_widget::msgdialog::{MsgDialog, MsgDialogState};
 use rat_widget::statusline::{StatusLine, StatusLineState};
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::cursor::Show;
+use ratatui::crossterm::style::Stylize;
 use ratatui::crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
 use ratatui::crossterm::{self, ExecutableCommand};
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::widgets::StatefulWidget;
+use ratatui::text::Span;
+use ratatui::widgets::{StatefulWidget, Widget};
 use russh_sftp::client::SftpSession;
 use std::io::stdout;
 use std::path::PathBuf;
@@ -197,15 +199,25 @@ pub fn render(
     }
 
     let el = t0.elapsed().unwrap_or(Duration::from_nanos(0));
+
     state.status.status(1, format!("R {:.0?}", el).to_string());
+    let remote_host_details = format!(
+        "  Conntected to {}@{}:{}  ",
+        ctx.cfg.cli.username.as_ref().map_or("root", |s| s.as_str()),
+        ctx.cfg.cli.host.as_str(),
+        ctx.cfg.cli.port
+    );
+    let len = remote_host_details.len();
+    state.status.status(3, remote_host_details);
 
     StatusLine::new()
         .layout([
             Constraint::Fill(1),
             Constraint::Length(8),
             Constraint::Length(8),
+            Constraint::Length(len as u16),
         ])
-        .styles(ctx.theme.statusline_style())
+        .styles_ext(ctx.theme.statusline_style_ext())
         .render(layout[1], buf, &mut state.status);
 
     Ok(())
