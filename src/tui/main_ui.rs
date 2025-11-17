@@ -242,7 +242,6 @@ pub fn render(
     .as_ref() else {
         unreachable!()
     };
-    Clear.render(right, buf);
 
     let &[left_top, left_bottom] = Layout::new(
         Direction::Vertical,
@@ -255,7 +254,7 @@ pub fn render(
 
     let &[right_top, right_bottom] = Layout::new(
         Direction::Vertical,
-        [Constraint::Percentage(30), Constraint::Percentage(70)],
+        [Constraint::Length(11), Constraint::Fill(1)],
     )
     .split(right)
     .as_ref() else {
@@ -297,7 +296,7 @@ pub fn render(
     let gauge_block = Block::default()
         .borders(Borders::ALL)
         .padding(Padding::horizontal(1))
-        .style(ctx.theme.container_border())
+        .border_style(ctx.theme.container_border())
         .border_type(BorderType::Rounded);
     let el = state.elapsed.elapsed();
     if state.is_downloading {
@@ -372,7 +371,7 @@ pub fn render(
             .alignment(ratatui::layout::Alignment::Center)
             .block(
                 gauge_block
-                    .style(ctx.theme.container_border())
+                    .border_style(ctx.theme.container_border())
                     .title("Keybinds"),
             )
             .render(rb_bottom, buf, &mut ParagraphState::default());
@@ -387,19 +386,20 @@ pub fn render(
             if let Some(content) = &state.current_file_content
                 && state.detail_window_mode == DetailWindowMode::Content
             {
+                Clear.render(right_top, buf);
                 Paragraph::new(content.clone())
                     .block(
                         Block::bordered()
                             .border_type(BorderType::Rounded)
                             .title_top("[2] Content")
-                            .style(ctx.theme.container_border())
+                            .border_style(ctx.theme.container_border())
                             .padding(Padding::uniform(1)),
                     )
                     .scroll(Scroll::new())
+                    .focus_style(Style::default().fg(Color::Yellow))
                     .styles(ctx.theme.paragraph_style())
                     .render(right_top, buf, &mut state.details_para_state);
             } else {
-                Clear.render(right_top, buf);
                 let metadata = file.attributes();
                 let mut buffer = Vec::new();
                 let metadata_table = MetadataSlice::from_attributes(metadata.clone(), &mut buffer);
@@ -416,10 +416,11 @@ pub fn render(
                         Block::bordered()
                             .border_type(BorderType::Rounded)
                             .title_top("[2] Metadata")
-                            .style(ctx.theme.container_border())
-                            .padding(Padding::uniform(1)),
+                            .border_style(ctx.theme.container_border())
+                            .padding(Padding::horizontal(1)),
                     )
                     .scroll(Scroll::new());
+
                 table.render(right_top, buf, &mut TableState::<NoSelection>::default());
             };
         }
@@ -427,7 +428,7 @@ pub fn render(
         Block::bordered()
             .border_type(BorderType::Rounded)
             .style(ctx.theme.container_border())
-            .title_top("[2] Details")
+            .title_top("[2] Metadata")
             .render(right_top, buf);
     }
     let input_block_title = match state.input_mode {
@@ -587,6 +588,10 @@ pub fn event(
                     }
                     ct_event!(key press '2') => {
                         ctx.focus().focus(&state.details_para_state);
+                        Control::Changed
+                    }
+                    ct_event!(key press '3') => {
+                        ctx.focus().focus(&state.input_state);
                         Control::Changed
                     }
                     _ => Control::Continue,
