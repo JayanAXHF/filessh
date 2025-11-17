@@ -1,4 +1,26 @@
 # Changelog
+## [0.1.10] - 2025-11-17
+
+### Features
+
+- *(TUI)* Added a display for the currect connection
+
+### Bug Fixes
+
+- *(TUI)* Fixed inconsistent border colours, and removed unnecessary whitespace
+
+### Other
+
+- Fix typo in README.md
+
+### Documentation
+
+- *(README)* Updated the GIF in the readme
+
+### Miscellaneous Tasks
+
+- *(clippy)* Fixed clippy lints
+
 ## [0.1.9] - 2025-11-14
 
 ### Documentation
