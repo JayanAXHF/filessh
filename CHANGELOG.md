@@ -1,4 +1,18 @@
 # Changelog
+## [0.2.1] - 2025-11-19
+
+### Features
+
+- *(build)* Added vergen to the build system
+
+### Refactor
+
+- *(cli)* Refactored the CLI module to better fit the build system
+
+### Documentation
+
+- *(README)* Updated usage instructions
+
 ## [0.2.0] - 2025-11-19
 
 ### Features
