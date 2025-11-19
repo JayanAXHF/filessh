@@ -45,17 +45,35 @@ filessh [OPTIONS] <HOST> <PATH>
 2. Recursively download directories with parallel directory traversal
 3. Quickly open SSH sessions to directories.
 
-### Arguments
+### Usage
 
--   `<HOST>`: The hostname or IP address of the SSH server.
--   `<PATH>`: The starting path to explore on the remote server.
+```
+filessh [OPTIONS] [HOST] [PATH]
+filessh <COMMAND>
 
-### Options
+Commands:
+  connect              Connect explicitly (same as default command)
+  install-man-pages    Install man pages into the system
+  install-completions  Generate shell completion scripts
 
--   `--port <PORT>`: The port number for the SSH connection (default: 22).
--   `--username <USERNAME>`: The username for the SSH connection (default: "root").
--   `-k`, `--private-key <PRIVATE_KEY>`: The path to your SSH private key.
--   `-o`, `--openssh-certificate <OPENSSH_CERTIFICATE>`: The path to your OpenSSH certificate.
+Arguments:
+  [HOST]  The remote host to connect to (e.g., 'example.com' or '192.168.1.100')
+  [PATH]  Initial directory path to open on the remote host
+
+Options:
+  -p, --port <PORT>
+          The port number to use for the SSH connection [default: 22]
+  -u, --username <USERNAME>
+          The username for logging into the remote host
+  -k, --private-key <PRIVATE_KEY>
+          Path to the private key file for public key authentication
+  -o, --openssh-certificate <OPENSSH_CERTIFICATE>
+          Optional path to an OpenSSH certificate
+  -h, --help
+          Print help
+  -V, --version
+          Print version
+```
 
 ### Example
 
