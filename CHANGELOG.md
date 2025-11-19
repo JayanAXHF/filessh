@@ -3,11 +3,10 @@
 
 ### Features
 
-- Added clap-completion support
-- *(cli)* [**breaking**] Changed the CLI structure to be modular and enable subcommands like install-man-pages
-- *(docs)* Added man pages for the project and the config system
 - Added a config system to the project, allowing users to configure themes
-
+- *(docs)* Added man pages for the project and the config system
+- *(cli)* [**breaking**] Changed the CLI structure to be modular and enable subcommands like install-man-pages
+- Added clap-completion support
 ## [0.1.10] - 2025-11-17
 
 ### Features

@@ -15,7 +15,7 @@ categories = ["command-line-utilities", "command-line-interface", "filesystem"]
 [dependencies]
 async-lock = "3.4.1"
 chrono = "0.4.42"
-clap = { version = "4.5.51", features = ["derive"] }
+clap = { version = "4.5.51", features = ["cargo", "derive"] }
 clap_complete = "4.5.60"
 color-eyre = "0.6.5"
 config = "0.15.19"
@@ -52,5 +52,6 @@ strip = true # Ensures debug symbols are removed.
 
 [build-dependencies]
 clap_mangen = "0.2.31"
-clap = { version = "4.5.51", features = ["derive"] }
-color-eyre = "0.6.5"
+clap = { version = "4.5.51", features = ["cargo", "derive"] }
+vergen-gix = { version = "1.0.2", features = ["build", "cargo"] }
+anyhow = "1.0.100"
