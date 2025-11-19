@@ -1,5 +1,5 @@
 use self::main_ui::MainUI;
-use crate::cli::Cli;
+use crate::cli::ResolvedConnectArgs;
 use crate::config::Theme;
 use crate::files::FileEntry;
 use crate::ssh::Session;
@@ -32,7 +32,7 @@ pub mod main_ui;
 
 pub fn tui(
     current_path: String,
-    cli: Cli,
+    cli: ResolvedConnectArgs,
     rt: tokio::runtime::Runtime,
     sftp: Arc<SftpSession>,
     session: Arc<Mutex<Session>>,
@@ -95,11 +95,11 @@ impl Global {
 /// Configuration.
 #[derive(Debug, Default)]
 pub struct Config {
-    pub(crate) cli: Cli,
+    pub(crate) cli: ResolvedConnectArgs,
 }
 
 impl Config {
-    pub fn new(cli: Cli) -> Self {
+    pub fn new(cli: ResolvedConnectArgs) -> Self {
         Self { cli }
     }
 }

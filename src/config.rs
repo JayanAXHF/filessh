@@ -359,8 +359,6 @@ pub fn install_manpages() -> Result<()> {
         let man1_file = format!("{}.1", &*PROJECT_NAME).to_lowercase();
         let man5_file = format!("{}.5", &*PROJECT_NAME).to_lowercase();
 
-        dbg!(concat!(env!("OUT_DIR"), "/filessh.1"));
-
         // Embed manpages
         // Adjust the include paths to your repo structure
         let man1_contents = include_str!(concat!(env!("OUT_DIR"), "/filessh.1"));

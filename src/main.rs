@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::cli::Cli;
+use crate::cli::{Cli, Commands};
 use crate::ssh::Session;
 use async_lock::Mutex as AsyncMutex;
 use clap::Parser;
@@ -23,10 +23,23 @@ fn main() -> Result<()> {
 
     info!("Starting...");
     let cli = Cli::parse();
-    if cli.install_man_pages {
-        config::install_manpages()?;
-        return Ok(());
+    match cli.command {
+        Some(Commands::InstallManPages) => {
+            config::install_manpages()?;
+            return Ok(());
+        }
+        Some(Commands::GenerateCompletion { shell }) => {
+            todo!()
+        }
+        _ => {}
     }
+
+    let cli = match cli.command {
+        Some(Commands::Connect(cli)) => cli,
+        None => cli.connect,
+        _ => unreachable!(),
+    };
+    let cli = cli.resolve()?;
 
     info!("Connecting to {}:{}", cli.host, cli.port);
     info!("Key path: {:?}", cli.private_key);

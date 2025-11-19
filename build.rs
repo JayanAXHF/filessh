@@ -1,7 +1,6 @@
 #![allow(unused)]
-use std::{env, path::PathBuf};
-
 use clap::CommandFactory;
+use std::{env, path::PathBuf};
 
 #[path = "src/cli.rs"]
 mod cli;

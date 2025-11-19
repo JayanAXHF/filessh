@@ -1,46 +1,88 @@
-use std::{
-    path::{Path, PathBuf},
-    process::Command,
-};
+use clap::Parser;
+use clap::command;
+use color_eyre::eyre::Context;
+use color_eyre::eyre::Result;
+use color_eyre::eyre::eyre;
+use std::path::{Path, PathBuf};
 
-/// Defines the command-line interface for the application, specifying all
-/// possible arguments and options.
-#[derive(clap::Parser, Default, Debug, Clone)]
-//#[command(name = "filessh")]
+/// Filessh: A small SSH-based remote file browser
+#[derive(Parser, Debug, Default)]
+#[command(
+    version,
+    about,
+    propagate_version = true,
+    disable_help_subcommand = true,
+    args_conflicts_with_subcommands = true
+)]
 pub struct Cli {
+    /// Optional subcommand
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+
+    /// Default command arguments (flattened)
+    #[command(flatten)]
+    pub connect: ConnectArgs,
+}
+
+/// All subcommands
+#[derive(clap::Subcommand, Debug)]
+pub enum Commands {
+    /// Connect explicitly (same as default command)
+    Connect(ConnectArgs),
+
+    /// Install man pages into the system
+    InstallManPages,
+
+    /// Generate shell completion scripts
+    GenerateCompletion {
+        /// Shell name (bash, zsh, fish)
+        #[clap(default_value = "bash")]
+        shell: String,
+    },
+}
+
+/// Arguments for the default “connect” command
+#[derive(clap::Args, Debug, Clone, Default)]
+pub struct ConnectArgs {
     /// The remote host to connect to (e.g., 'example.com' or '192.168.1.100').
     #[clap(index = 1)]
-    pub host: String,
+    pub host: Option<String>,
 
     /// The port number to use for the SSH connection.
     #[clap(long, short, default_value_t = 22)]
     pub port: u16,
 
     /// The username for logging into the remote host.
-    /// If not provided, the SSH client may use the current local username or a
-    /// default specified in SSH configuration.
     #[clap(long, short)]
     pub username: Option<String>,
 
-    /// The path to the private key file for public key authentication.
+    /// Path to the private key file for public key authentication.
     #[clap(long, short = 'k')]
-    pub private_key: PathBuf,
+    pub private_key: Option<PathBuf>,
 
-    /// An optional path to an OpenSSH certificate file for authentication.
+    /// Optional path to an OpenSSH certificate.
     #[clap(long, short = 'o')]
     pub openssh_certificate: Option<PathBuf>,
 
-    /// The initial directory path to open on the remote host after connecting.
-    #[clap(index = 2, required = true)]
-    pub path: PathBuf,
-
-    /// Install the man pages for the application
-    #[clap(long, default_value_t = false)]
-    pub install_man_pages: bool,
+    /// Initial directory path to open on the remote host.
+    #[clap(index = 2)]
+    pub path: Option<PathBuf>,
 }
 
-impl Cli {
-    pub fn build_ssh_command(&self) -> Command {
+#[derive(Debug, Clone, Default)]
+pub struct ResolvedConnectArgs {
+    pub host: String,
+    pub port: u16,
+    pub username: Option<String>,
+    pub private_key: PathBuf,
+    pub openssh_certificate: Option<PathBuf>,
+    pub path: PathBuf,
+}
+
+impl ResolvedConnectArgs {
+    /// Build a base SSH command (no remote path yet)
+    pub fn build_ssh_command(&self) -> std::process::Command {
+        type Command = std::process::Command;
         let mut cmd = Command::new("ssh");
 
         if let Some(username) = &self.username {
@@ -57,16 +99,52 @@ impl Cli {
         cmd
     }
 
-    pub fn build_ssh_with_path<P>(&self, path: P) -> Command
+    /// Build SSH command that opens into the given remote path
+    pub fn build_ssh_with_path<P>(&self, path: P) -> std::process::Command
     where
         P: AsRef<Path>,
     {
+        type Command = std::process::Command;
         let mut cmd = self.build_ssh_command();
 
-        // Build the remote command: cd <path>; bash --login
+        // Build remote command: cd <path>; bash --login
         let remote_cmd = format!("cd {}; bash --login", path.as_ref().display());
-
         cmd.arg("-t").arg(remote_cmd);
+
         cmd
+    }
+}
+
+impl ConnectArgs {
+    pub fn resolve(&self) -> Result<ResolvedConnectArgs> {
+        let host = self
+            .host
+            .as_ref()
+            .ok_or_else(|| eyre!("missing required argument: <host>"))
+            .wrap_err("You must provide a host. Example: filessh example.com .")?
+            .clone();
+
+        let path = self
+            .path
+            .as_ref()
+            .ok_or_else(|| eyre!("missing required argument: <path>"))
+            .wrap_err("You must provide a path. Example: filessh example.com /var/www")?
+            .clone();
+
+        let private_key = self
+            .private_key
+            .as_ref()
+            .ok_or_else(|| eyre!("missing --private-key <FILE>"))
+            .wrap_err("The private key flag (-k, --private-key) is required.")?
+            .clone();
+
+        Ok(ResolvedConnectArgs {
+            host,
+            port: self.port,
+            username: self.username.clone(),
+            private_key,
+            openssh_certificate: self.openssh_certificate.clone(),
+            path,
+        })
     }
 }
