@@ -1,6 +1,6 @@
 [package]
 name = "filessh"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2024"
 description = "A fast and convenient TUI file browser for remote servers "
 authors = ["JayanAXHF <sunil.chdry@gmail.com>"]
