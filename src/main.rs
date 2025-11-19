@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
 use crate::cli::{Cli, Commands};
+use crate::completions::detect_shell;
 use crate::ssh::Session;
 use async_lock::Mutex as AsyncMutex;
 use clap::Parser;
-use color_eyre::eyre::{self, Result};
+use color_eyre::eyre::{self, Result, eyre};
 use tracing::info;
 
 mod cli;
+mod completions;
 mod config;
 mod files;
 mod logging;
@@ -23,13 +25,18 @@ fn main() -> Result<()> {
 
     info!("Starting...");
     let cli = Cli::parse();
-    match cli.command {
-        Some(Commands::InstallManPages) => {
-            config::install_manpages()?;
-            return Ok(());
-        }
-        Some(Commands::GenerateCompletion { shell }) => {
-            todo!()
+    match cli.command.clone() {
+        Some(Commands::InstallManPages) => return config::install_manpages(),
+        Some(Commands::InstallCompletions { shell }) => {
+            use clap_complete::Shell;
+
+            let shell = if shell == "auto" {
+                detect_shell().ok_or_else(|| eyre!("Could not auto-detect shell"))?
+            } else {
+                shell.parse::<Shell>().map_err(|_| eyre!("Unknown shell"))?
+            };
+
+            return crate::completions::install_completions(shell);
         }
         _ => {}
     }

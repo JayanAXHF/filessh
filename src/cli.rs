@@ -25,7 +25,7 @@ pub struct Cli {
 }
 
 /// All subcommands
-#[derive(clap::Subcommand, Debug)]
+#[derive(clap::Subcommand, Debug, Clone)]
 pub enum Commands {
     /// Connect explicitly (same as default command)
     Connect(ConnectArgs),
@@ -34,7 +34,7 @@ pub enum Commands {
     InstallManPages,
 
     /// Generate shell completion scripts
-    GenerateCompletion {
+    InstallCompletions {
         /// Shell name (bash, zsh, fish)
         #[clap(default_value = "bash")]
         shell: String,
@@ -104,7 +104,6 @@ impl ResolvedConnectArgs {
     where
         P: AsRef<Path>,
     {
-        type Command = std::process::Command;
         let mut cmd = self.build_ssh_command();
 
         // Build remote command: cd <path>; bash --login
