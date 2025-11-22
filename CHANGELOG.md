@@ -1,4 +1,14 @@
 # Changelog
+## [0.2.2] - 2025-11-22
+
+### Features
+
+- *(errors)* Added better error handling using panic-hooks and human-panic
+
+### Miscellaneous Tasks
+
+- Typo fixed
+
 ## [0.2.1] - 2025-11-19
 
 ### Features
