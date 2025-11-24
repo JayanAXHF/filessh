@@ -1,4 +1,10 @@
 # Changelog
+## [0.3.1] - 2025-11-24
+
+### Features
+
+- *(config)* Added a default config generator and fixed config detection
+
 ## [0.3.0] - 2025-11-24
 
 ### Features
