@@ -295,17 +295,26 @@ impl<'a> TableData<'a> for FileDataSlice<'a> {
                     FileType::Symlink => "§ ",
                     _ => "├ █ ",
                 };
-                let mut span =
-                    Span::from(vertical_line_symbol.clone() + span_prefix + " " + &entry.name);
+                let entry_span = if entry.is_dir() {
+                    ratatui_macros::span![entry.name.clone() + "/"].blue()
+                } else {
+                    ratatui_macros::span![entry.name.clone()]
+                };
+                let mut line = ratatui_macros::line![
+                    vertical_line_symbol.clone() + span_prefix + " ",
+                    entry_span
+                ];
 
                 if _ctx.selected_row {
-                    span = Span::from(format!(
-                        "{}{}[{}]",
-                        vertical_line_symbol, span_prefix, &entry.name
-                    ))
-                    .style(Style::default().add_modifier(Modifier::BOLD));
+                    let name = if entry.is_dir() {
+                        entry.name.clone() + "/"
+                    } else {
+                        entry.name.clone()
+                    };
+                    line = Line::from(format!("{}{}[{}]", vertical_line_symbol, span_prefix, name))
+                        .style(Style::default().add_modifier(Modifier::BOLD));
                 }
-                span.render(area, buf);
+                line.render(area, buf);
             }
             2 => {
                 if !entry.is_dir() {
