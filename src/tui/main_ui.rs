@@ -132,6 +132,7 @@ pub struct MainUI {
     pub current_file_content: Option<String>,
     pub in_multi_key_combo_new: bool,
     pub in_editor: bool,
+    pub hidden_files: bool,
 }
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum InputMode {
@@ -192,6 +193,7 @@ impl MainUI {
             current_file_content: None,
             in_multi_key_combo_new: false,
             in_editor: false,
+            hidden_files: false,
         }
     }
 
@@ -557,6 +559,17 @@ pub fn event(
 ) -> Result<Control<AppEvent>, Error> {
     let r = match event {
         AppEvent::Event(event) => {
+            if let Some(t) = ctx.focus().focused()
+                && t != state.input_state.focus
+            {
+                try_flow!(match event {
+                    ct_event!(key press '.') => {
+                        state.hidden_files = !state.hidden_files;
+                        Control::Changed
+                    }
+                    _ => Control::Continue,
+                });
+            }
             if state.in_multi_key_combo_new {
                 try_flow!(match event {
                     ct_event!(key press 'f') => {
