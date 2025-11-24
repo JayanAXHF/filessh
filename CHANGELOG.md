@@ -1,4 +1,18 @@
 # Changelog
+## [0.3.0] - 2025-11-24
+
+### Features
+
+- *(TUI)* Added support for filtering out hidden files
+
+### Refactor
+
+- *(state)* [**breaking**] Refactored MainUI's get_file_entries to be `CoW` to support hidden files filering
+
+### Styling
+
+- *(file view)* Differentiated between directories and files using colour
+
 ## [0.2.2] - 2025-11-22
 
 ### Features
