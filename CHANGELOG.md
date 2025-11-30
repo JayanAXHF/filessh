@@ -1,4 +1,10 @@
 # Changelog
+## [0.3.2] - 2025-11-30
+
+### Other
+
+- Remove CARGO_REGISTRY_TOKEN from release, enabling Trusted Publishing
+
 ## [0.3.1] - 2025-11-24
 
 ### Features
