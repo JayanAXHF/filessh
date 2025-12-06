@@ -1,181 +1,175 @@
 # Changelog
-## [0.3.2] - 2025-11-30
 
-### Other
+All notable changes to this project will be documented in this file.
 
-- Remove CARGO_REGISTRY_TOKEN from release, enabling Trusted Publishing
-
-## [0.3.1] - 2025-11-24
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [unreleased]
 
 ### Features
-
-- *(config)* Added a default config generator and fixed config detection
+- *(config)* Added a default config generator and fixed config detection (by @JayanAXHF)
 
 ## [0.3.0] - 2025-11-24
 
 ### Features
+- *(TUI)* Added support for filtering out hidden files (by @JayanAXHF)
 
-- *(TUI)* Added support for filtering out hidden files
 
 ### Refactor
+- *(state)* [**breaking**] Refactored MainUI's get_file_entries to be `CoW` to support hidden files filering (by @JayanAXHF)
 
-- *(state)* [**breaking**] Refactored MainUI's get_file_entries to be `CoW` to support hidden files filering
 
 ### Styling
-
-- *(file view)* Differentiated between directories and files using colour
+- *(file view)* Differentiated between directories and files using colour (by @JayanAXHF)
 
 ## [0.2.2] - 2025-11-22
 
 ### Features
+- *(errors)* Added better error handling using panic-hooks and human-panic (by @JayanAXHF)
 
-- *(errors)* Added better error handling using panic-hooks and human-panic
 
 ### Miscellaneous Tasks
-
-- Typo fixed
+- typo fixed (by @TimShilov)
 
 ## [0.2.1] - 2025-11-19
 
 ### Features
+- *(build)* Added vergen to the build system (by @JayanAXHF)
 
-- *(build)* Added vergen to the build system
 
 ### Refactor
+- *(cli)* Refactored the CLI module to better fit the build system (by @JayanAXHF)
 
-- *(cli)* Refactored the CLI module to better fit the build system
 
 ### Documentation
-
-- *(README)* Updated usage instructions
+- *(README)* Updated usage instructions (by @JayanAXHF)
 
 ## [0.2.0] - 2025-11-19
 
 ### Features
+- Added a config system to the project, allowing users to configure themes (by @JayanAXHF)
+- *(docs)* Added man pages for the project and the config system (by @JayanAXHF)
+- *(cli)* [**breaking**] Changed the CLI structure to be modular and enable subcommands like install-man-pages (by @JayanAXHF)
+- Added clap-completion support (by @JayanAXHF)
 
-- Added a config system to the project, allowing users to configure themes
-- *(docs)* Added man pages for the project and the config system
-- *(cli)* [**breaking**] Changed the CLI structure to be modular and enable subcommands like install-man-pages
-- Added clap-completion support
 ## [0.1.10] - 2025-11-17
 
 ### Features
+- *(TUI)* Added a display for the currect connection (by @JayanAXHF)
 
-- *(TUI)* Added a display for the currect connection
 
 ### Bug Fixes
+- *(TUI)* Fixed inconsistent border colours, and removed unnecessary whitespace (by @JayanAXHF)
 
-- *(TUI)* Fixed inconsistent border colours, and removed unnecessary whitespace
 
 ### Other
+- *(docs)* Merge pull request #18 from ZennoZenith/patch-1 (by @JayanAXHF)
 
-- *(docs)* Merge pull request #18 from ZennoZenith/patch-1
 
 ### Documentation
+- Update the README to include license information and added the relevant license files. (by @JayanAXHF)
+- *(README)* Updated the GIF in the readme (by @JayanAXHF)
 
-- Update the README to include license information and added the relevant license files.
-- *(README)* Updated the GIF in the readme
 
 ### Miscellaneous Tasks
+- *(clippy)* Fixed clippy lints (by @JayanAXHF)
 
-- *(clippy)* Fixed clippy lints
 ## [0.1.8] - 2025-11-14
 
 ### Features
+- *(TUI)* Added the ability to create files (by @JayanAXHF)
 
-- *(TUI)* Added the ability to create files
 
 ### Bug Fixes
+- *(clippy)* removed `unwrap()`s and replaced with error propogation (by @JayanAXHF)
 
-- *(clippy)* Removed `unwrap()`s and replaced with error propogation
 
 ### Documentation
+- *(changelog)* Changed CHANGELOG format to include title (by @JayanAXHF)
 
-- *(changelog)* Changed CHANGELOG format to include title
 ## [0.1.7] - 2025-11-13
 
 ### Features
+- *(TUI)* Fixed effect timing (by @JayanAXHF)
+- *(TUI)* Changed Metadata pane, to include all metadata attributes in a nicer Table (by @JayanAXHF)
 
-- *(TUI)* Fixed effect timing
-- *(TUI)* Changed Metadata pane, to include all metadata attributes in a nicer Table
 
 ### Bug Fixes
+- *(bug)* fixed state not resetting after directory download (by @JayanAXHF)
+- *(typo)* Fixed a type in the keybinds (by @JayanAXHF)
 
-- *(bug)* Fixed state not resetting after directory download
-- *(typo)* Fixed a type in the keybinds
 
 ### Documentation
+- *(README)* Added features subsection to readme (by @JayanAXHF)
 
-- *(README)* Added features subsection to readme
 ## [0.1.6] - 2025-11-13
 
 ### Features
+- *(SSH)* Added the feature to access an ssh session quickly from the browser. (by @JayanAXHF)
 
-- *(SSH)* Added the feature to access an ssh session quickly from the browser.
 ## [0.1.5] - 2025-11-12
 
 ### Features
+- *(TUI)* Updated keybind hints (by @JayanAXHF)
+- *(TUI)* Added the ability to edit files in an external editor. (by @JayanAXHF)
 
-- *(TUI)* Updated keybind hints
-- *(TUI)* Added the ability to edit files in an external editor.
 ## [0.1.4] - 2025-11-12
 
 ### Features
+- *(TUI)* Added delete feature (by @JayanAXHF)
+- *(TUI)* Added ability to move files. (by @JayanAXHF)
 
-- *(TUI)* Added delete feature
-- *(TUI)* Added ability to move files.
 ## [0.1.3] - 2025-11-12
 
 ### Documentation
+- Added the GIF to the README (by @JayanAXHF)
+- *(README)* Added built with ratatui label (by @JayanAXHF)
+- *(README)* Added badges to the README (by @JayanAXHF)
 
-- Added the GIF to the README
-- *(README)* Added built with ratatui label
-- *(README)* Added badges to the README
 ## [0.1.2] - 2025-11-12
 
 ### Features
+- *(TUI)* Added file sizes to the download progress. (by @JayanAXHF)
 
-- *(TUI)* Added file sizes to the download progress.
 
 ### Performance
+- *(optimization)* Added optimization options to `Cargo.toml` (by @JayanAXHF)
 
-- *(optimization)* Added optimization options to `Cargo.toml`
 
 ### Styling
+- Formatted Changelog (by @JayanAXHF)
 
-- Formatted Changelog
 ## [0.1.1] - 2025-11-11
 
 ### Miscellaneous Tasks
+- removed useless print messages (by @JayanAXHF)
 
-- Removed useless print messages
 ## [0.1.0] - 2025-11-11
 
 ### Features
+- Created till functioning tui (by @JayanAXHF)
+- *(TUI)* Made the TUI faster by removing multiple ssh connections (by @JayanAXHF)
+- *(TUI)* Added line gauge, fixed errors (by @JayanAXHF)
+- *(TUI)* Added a remaining files download list (by @JayanAXHF)
+- *(TUI)* Added TachyonFx for smooth transitions (by @JayanAXHF)
+- *(TUI)* Added content viewing (by @JayanAXHF)
+- [**breaking**] Added provisional README (by @JayanAXHF)
+- *(docs)* Added git-cliff support (by @JayanAXHF)
 
-- Created till functioning tui
-- *(TUI)* Made the TUI faster by removing multiple ssh connections
-- *(TUI)* Added line gauge, fixed errors
-- *(TUI)* Added a remaining files download list
-- *(TUI)* Added TachyonFx for smooth transitions
-- *(TUI)* Added content viewing
-- [**breaking**] Added provisional README
-- *(docs)* Added git-cliff support
 
 ### Bug Fixes
+- *(TUI)* fixed the tui-logger widget (by @JayanAXHF)
+- *(log)* Fixed logging (by @JayanAXHF)
+- *(lint)* Fixed clippy lints (by @JayanAXHF)
 
-- *(TUI)* Fixed the tui-logger widget
-- *(log)* Fixed logging
-- *(lint)* Fixed clippy lints
 
 ### Refactor
+- Separated tui.rs into separate module (by @JayanAXHF)
 
-- Separated tui.rs into separate module
 
 ### Documentation
+- Committeed CHANGELOG.MD (by @JayanAXHF)
 
-- Committeed CHANGELOG.MD
 
 ### Miscellaneous Tasks
-
-- *(release)* V0.1.0
+- *(release)* v0.1.0 (by @JayanAXHF)
