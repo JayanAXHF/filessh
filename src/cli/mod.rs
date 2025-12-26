@@ -3,6 +3,8 @@ use color_eyre::eyre::{Context, Result, eyre};
 pub use definition::*;
 use std::path::Path;
 
+use crate::ssh_config::{self, Hosts, reader::SSHConfigReader};
+
 impl ResolvedConnectArgs {
     /// Build a base SSH command (no remote path yet)
     pub fn build_ssh_command(&self) -> std::process::Command {
@@ -40,6 +42,14 @@ impl ResolvedConnectArgs {
 
 impl ConnectArgs {
     pub fn resolve(&self) -> Result<ResolvedConnectArgs> {
+        if let Some(host) = &self.from_config {
+            let mut config_reader = SSHConfigReader::new();
+
+            config_reader.read()?;
+            let config = config_reader.finalize();
+            let config: Hosts = ssh_config::from_str(&config)?;
+            let host_config = config.0.iter().find(|h| h.host_name == host);
+        }
         let host = self
             .host
             .as_ref()

@@ -13,11 +13,11 @@ mod completions;
 mod config;
 mod errors;
 mod files;
-mod hosts_parser;
 mod logging;
 mod par_dir_traversal;
 mod patched_line_gauge;
 mod ssh;
+mod ssh_config;
 mod tui;
 
 fn main() -> Result<()> {

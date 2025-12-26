@@ -1,15 +1,16 @@
-use std::{
-    collections::VecDeque,
-    ops::{AddAssign, MulAssign},
-};
+use std::ops::{AddAssign, MulAssign};
 
 use derive_more::Display;
 use serde::{
     Deserialize,
-    de::{IntoDeserializer, MapAccess, Visitor},
+    de::{MapAccess, SeqAccess, Visitor},
 };
 
 type Result<T> = std::result::Result<T, ParserError>;
+
+const fn default_port() -> u16 {
+    22
+}
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct Host {
@@ -19,19 +20,13 @@ pub struct Host {
     pub user: String,
     #[serde(rename = "IdentityFile")]
     pub identity_file: String,
-    #[serde(rename = "Port")]
+    #[serde(rename = "Port", default = "default_port")]
     pub port: u16,
 }
 
+// Changed to a tuple struct to seamlessly support deserializing a sequence of Hosts
 #[derive(Debug, Deserialize, PartialEq, Eq)]
-pub struct Hosts {
-    #[serde(flatten)]
-    pub hosts: Vec<Host>,
-}
-
-struct HostMapAccess {
-    entries: VecDeque<(String, String)>,
-}
+pub struct Hosts(pub Vec<Host>);
 
 #[derive(Debug)]
 enum Identifier {
@@ -102,52 +97,99 @@ where
     if deserializer.input.is_empty() {
         Ok(t)
     } else {
-        Err(ParserError::TrailingCharacters)
+        // Allow trailing whitespace
+        let trimmed = deserializer.input.trim();
+        if trimmed.is_empty() {
+            Ok(t)
+        } else {
+            Err(ParserError::TrailingCharacters)
+        }
     }
 }
 
 impl<'de> Deserializer<'de> {
     fn peek_char(&mut self) -> Result<char> {
-        self.input.chars().next().ok_or_else(|| {
-            dbg!(self.input);
-            ParserError::Eof
-        })
+        self.input.chars().next().ok_or(ParserError::Eof)
     }
 
     // Consume the first character in the input.
     fn advance(&mut self) -> Result<char> {
         let ch = self.peek_char()?;
-        dbg!("advance");
         self.input = &self.input[ch.len_utf8()..];
         Ok(ch)
     }
 
-    fn parse_identifier(&mut self) -> Result<Identifier> {
-        let mut identifier = String::new();
+    fn skip_whitespace(&mut self) {
+        // Skip whitespace
         let to_skip = self
             .input
             .chars()
-            .take_while(|ch| matches!(ch, ' ' | '\t'))
+            .take_while(|ch| ch.is_whitespace())
             .count();
         self.input = &self.input[to_skip..];
-        println!("{}", self.input);
+
+        // Skip lines starting with # (comments)
+        while self.input.starts_with('#') {
+            let to_eol = self.input.chars().take_while(|ch| *ch != '\n').count();
+            self.input = &self.input[to_eol..];
+
+            // Remove the newline character itself if present
+            if self.input.starts_with('\n') {
+                self.input = &self.input[1..];
+            }
+
+            let to_skip = self
+                .input
+                .chars()
+                .take_while(|ch| ch.is_whitespace())
+                .count();
+            self.input = &self.input[to_skip..];
+        }
+    }
+
+    // Peeks at the next identifier without consuming it
+    fn peek_identifier(&mut self) -> Result<Identifier> {
+        let mut iter = self.input.chars().peekable();
+
+        // Skip whitespace
+        while let Some(&ch) = iter.peek() {
+            if ch.is_whitespace() {
+                iter.next();
+            } else {
+                break;
+            }
+        }
+
+        let mut word = String::new();
+        while let Some(&ch) = iter.peek() {
+            if !ch.is_whitespace() {
+                word.push(ch);
+                iter.next();
+            } else {
+                break;
+            }
+        }
+
+        Identifier::try_from(word)
+    }
+
+    fn parse_identifier(&mut self) -> Result<Identifier> {
+        self.skip_whitespace();
+        let mut identifier = String::new();
+
         while let Ok(ch) = self.peek_char() {
-            dbg!("{}", ch);
             if !ch.is_whitespace() {
                 identifier.push(ch);
                 self.advance()?;
             } else {
-                println!("{}", ch);
-                println!("{}", self.input);
                 break;
             }
         }
-        println!("identifier: {}", identifier);
         Identifier::try_from(identifier)
     }
 
     fn parse_string(&mut self) -> Result<String> {
-        dbg!("parse_string");
+        self.skip_whitespace();
         let mut string = String::new();
         while let Ok(ch) = self.peek_char() {
             if ch.is_whitespace() {
@@ -156,8 +198,6 @@ impl<'de> Deserializer<'de> {
             string.push(ch);
             self.advance()?;
         }
-        println!("string: {}", string);
-        println!("input:\n{}", self.input);
         Ok(string)
     }
 
@@ -165,10 +205,10 @@ impl<'de> Deserializer<'de> {
     where
         T: AddAssign<T> + MulAssign<T> + From<u8>,
     {
+        self.skip_whitespace();
         let mut int = match self.advance()? {
             ch @ '0'..='9' => T::from(ch as u8 - b'0'),
             _ => {
-                dbg!(&self.input);
                 return Err(ParserError::ExpectedInteger);
             }
         };
@@ -223,27 +263,18 @@ impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
         visitor.visit_u16(self.parse_unsigned()?)
     }
 
-    fn deserialize_seq<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_seq<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
-        unimplemented!()
+        visitor.visit_seq(HostsSeqAccess::new(self))
     }
 
     fn deserialize_map<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
-        dbg!(&self.input);
-        while let Ok(ch) = self.peek_char() {
-            if ch.is_whitespace() {
-                self.advance()?;
-            } else {
-                break;
-            }
-        }
-        let value = visitor.visit_map(WhitespaceSeparated::new(self))?;
-        Ok(value)
+        visitor.visit_map(WhitespaceSeparated::new(self))
     }
 
     fn deserialize_i8<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
@@ -386,7 +417,7 @@ impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        self.deserialize_seq(visitor)
     }
 
     fn is_human_readable(&self) -> bool {
@@ -402,25 +433,31 @@ impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        // Check if we are deserializing a Host or Hosts struct
+        // Note: Since we changed Hosts to a tuple struct, deserialize_struct might not be called for it
+        // depending on serde internals, but if it were a named struct it would.
+        // Here we specifically handle the "Host" keyword parsing.
+
+        // For the top-level file parsing into Hosts (tuple struct), deserialize_seq is usually called.
+        // This method is primarily for parsing a single "Host" block.
+
         let trimmed = self.input.trim_start();
         self.input = trimmed;
-        let next_identifier_str = self
-            .input
-            .chars()
-            .take_while(|ch| !ch.is_whitespace())
-            .collect::<String>();
-        let next_identifier = Identifier::try_from(next_identifier_str)?;
-        match next_identifier {
-            Identifier::Host => {
-                self.parse_identifier()?;
-                self.advance()?;
-                self.parse_string()?;
-                self.advance()?;
-                dbg!(&self.input);
+
+        // Peek to ensure we are at a Host block
+        match self.peek_identifier() {
+            Ok(Identifier::Host) => {
+                self.parse_identifier()?; // "Host"
+                self.advance()?; // space
+                self.parse_string()?; // alias (discarded)
+                self.advance()?; // newline
+
                 let host = visitor.visit_map(WhitespaceSeparated::new(self))?;
                 Ok(host)
             }
-            _ => Err(ParserError::UnexpectedToken),
+            Ok(_) => Err(ParserError::UnexpectedToken),
+            Err(ParserError::Eof) => Err(ParserError::Eof),
+            Err(e) => Err(e),
         }
     }
 
@@ -449,8 +486,9 @@ impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        self.deserialize_seq(visitor)
     }
+
     fn deserialize_newtype_struct<V>(
         self,
         name: &'static str,
@@ -459,7 +497,52 @@ impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        self.deserialize_seq(visitor)
+    }
+}
+
+struct HostsSeqAccess<'a, 'de: 'a> {
+    de: &'a mut Deserializer<'de>,
+}
+
+impl<'a, 'de> HostsSeqAccess<'a, 'de> {
+    fn new(de: &'a mut Deserializer<'de>) -> Self {
+        Self { de }
+    }
+}
+
+impl<'a, 'de> SeqAccess<'de> for HostsSeqAccess<'a, 'de> {
+    type Error = ParserError;
+
+    fn next_element_seed<T>(
+        &mut self,
+        seed: T,
+    ) -> std::result::Result<Option<T::Value>, Self::Error>
+    where
+        T: serde::de::DeserializeSeed<'de>,
+    {
+        self.de.skip_whitespace();
+
+        if self.de.input.is_empty() {
+            return Ok(None);
+        }
+
+        // Peek to see if we are starting a Host block
+        match self.de.peek_identifier() {
+            Ok(Identifier::Host) => {
+                // Deserialize this Host
+                seed.deserialize(&mut *self.de).map(Some)
+            }
+            Ok(_) => {
+                // Found a token that isn't "Host" at the sequence level
+                // Depending on strictness, we could error or ignore.
+                // For SSH config, we expect Host blocks.
+                // Let's return an error as this is likely malformed.
+                Err(ParserError::UnexpectedToken)
+            }
+            Err(ParserError::Eof) => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -484,11 +567,12 @@ impl<'a, 'de> serde::de::SeqAccess<'de> for WhitespaceSeparated<'a, 'de> {
     where
         T: serde::de::DeserializeSeed<'de>,
     {
+        // This implementation is kept for completeness but might not be used for the primary logic
+        // which relies on MapAccess for Hosts.
         if self.de.peek_char()? == '\n' {
             return Ok(None);
         }
         if !self.first && self.de.advance()? != ' ' {
-            dbg!("error here");
             return Err(ParserError::UnexpectedToken);
         }
 
@@ -503,18 +587,26 @@ impl<'a, 'de> MapAccess<'de> for WhitespaceSeparated<'a, 'de> {
     where
         K: serde::de::DeserializeSeed<'de>,
     {
-        dbg!("next_key_seed");
+        self.de.skip_whitespace();
+
         if self.de.input.is_empty() {
             return Ok(None);
         }
-        let ch = self.de.advance()?;
-        if !self.first && ch != '\n' {
-            dbg!("error here");
-            return Err(ParserError::UnexpectedToken);
+
+        // Check if the next token is "Host", indicating the start of a new host block
+        // If so, the current map (Host) is finished.
+        if let Ok(Identifier::Host) = self.de.peek_identifier() {
+            return Ok(None);
         }
-        self.first = false;
-        let trimmed = self.de.input.trim_start();
-        self.de.input = trimmed;
+
+        // Reset first flag is not really applicable here as this is map access,
+        // but we ensure we don't consume newlines as separators unless necessary.
+        // The current format is Key Value \n Key Value
+
+        // Note: We don't use self.first here because map keys in SSH config
+        // don't have a leading separator like the first element of a line usually does in other formats.
+        // The first call should succeed immediately if the input pointer is at a Key.
+
         seed.deserialize(&mut *self.de).map(Some)
     }
 
@@ -522,12 +614,7 @@ impl<'a, 'de> MapAccess<'de> for WhitespaceSeparated<'a, 'de> {
     where
         V: serde::de::DeserializeSeed<'de>,
     {
-        dbg!("next_value_seed");
-        let n_ch = self.de.advance()?;
-        if !matches!(n_ch, ' ' | '\t') {
-            dbg!("error here: {}");
-            return Err(ParserError::UnexpectedToken);
-        }
+        self.de.skip_whitespace();
         seed.deserialize(&mut *self.de)
     }
 }
@@ -541,13 +628,44 @@ mod tests {
     #[test]
     fn test_deserialize_host() {
         let test_str = "Host mc_server
-	HostName 141.148.218.223
-	User opc
+    HostName 141.148.218.223
+    User opc
         Port 22
-	IdentityFile ~/Downloads/ssh-key-2024-06-13.key ";
+    IdentityFile ~/Downloads/ssh-key-2024-06-13.key ";
         println!("starting deserialization");
         let host: Host = from_str(test_str.trim()).unwrap();
         println!("{:?}", host);
+        assert_eq!(host.host_name, "141.148.218.223");
+        assert_eq!(host.user, "opc");
+        assert_eq!(host.port, 22);
+    }
+
+    #[test]
+    fn test_deserialize_hosts_multiple() {
+        let test_str = "Host mc_server
+    HostName 141.148.218.223
+    User opc
+    Port 22
+    IdentityFile ~/Downloads/ssh-key-2024-06-13.key
+
+Host git_server
+    HostName github.com
+    User git
+    Port 2222
+    IdentityFile ~/.ssh/id_rsa";
+
+        let hosts: Hosts = from_str(test_str).unwrap();
+        println!("{:?}", hosts);
+        assert_eq!(hosts.0.len(), 2);
+
+        let h1 = &hosts.0[0];
+        assert_eq!(h1.host_name, "141.148.218.223");
+        assert_eq!(h1.user, "opc");
+
+        let h2 = &hosts.0[1];
+        assert_eq!(h2.host_name, "github.com");
+        assert_eq!(h2.user, "git");
+        assert_eq!(h2.port, 2222);
     }
 
     #[test]
