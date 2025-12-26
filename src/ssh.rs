@@ -51,7 +51,7 @@ impl Session {
         openssh_cert_path: Option<P>,
         addrs: A,
     ) -> Result<Self> {
-        let key_pair = load_secret_key(key_path, None)?;
+        let key_pair = load_secret_key(key_path, None).unwrap();
 
         // load ssh certificate
         let mut openssh_cert = None;

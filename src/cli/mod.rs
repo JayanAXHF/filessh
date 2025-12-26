@@ -1,7 +1,10 @@
 mod definition;
 use color_eyre::eyre::{Context, Result, eyre};
 pub use definition::*;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use tracing::debug;
+
+use crate::ssh_config::{self, Host, Hosts, reader::SSHConfigReader};
 
 impl ResolvedConnectArgs {
     /// Build a base SSH command (no remote path yet)
@@ -40,6 +43,44 @@ impl ResolvedConnectArgs {
 
 impl ConnectArgs {
     pub fn resolve(&self) -> Result<ResolvedConnectArgs> {
+        if self.from_config {
+            let host = self
+                .host
+                .as_ref()
+                .ok_or_else(|| eyre!("missing required argument: <host>"))?;
+            let mut config_reader = SSHConfigReader::new();
+
+            config_reader.read()?;
+            let config = config_reader.finalize();
+            let config: Hosts = ssh_config::from_str(&config)?;
+            let Some(host_config) = config.0.iter().find(|h| &h.name == host) else {
+                return Err(eyre!("Host not found in config file"));
+            };
+            let path = self
+                .path
+                .as_ref()
+                .ok_or_else(|| eyre!("missing required argument: <path>"))
+                .wrap_err("You must provide a path. Example: filessh example.com /var/www")?
+                .clone();
+            let Host {
+                host_name,
+                user,
+                port,
+                identity_file,
+                name: _,
+            } = host_config;
+            debug!("pvt_key_path: {:?}", identity_file);
+            let pvt_key_path = shellexpand::full(&identity_file)?;
+            let pvt_key_path = PathBuf::from(pvt_key_path.as_ref()).canonicalize()?;
+            return Ok(ResolvedConnectArgs {
+                host: host_name.to_string(),
+                port: *port,
+                username: Some(user.to_owned()),
+                private_key: pvt_key_path,
+                openssh_certificate: self.openssh_certificate.clone(),
+                path,
+            });
+        }
         let host = self
             .host
             .as_ref()

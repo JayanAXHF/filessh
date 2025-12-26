@@ -87,6 +87,9 @@ pub struct ConnectArgs {
     /// Initial directory path to open on the remote host.
     #[clap(index = 2)]
     pub path: Option<PathBuf>,
+
+    #[clap(short, long)]
+    pub from_config: bool,
 }
 
 #[derive(Debug, Clone, Default)]

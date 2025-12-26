@@ -35,7 +35,7 @@ ratatui-macros = "0.6.0"
 rayon = "1.11.0"
 russh = "0.54.6"
 russh-sftp = "2.1.1"
-serde = "1.0.228"
+serde = { version = "1.0.228", features = ["derive"] }
 shell-escape = "0.1.5"
 strip-ansi-escapes = "0.2.1"
 tachyonfx = "0.20.1"
@@ -50,6 +50,9 @@ toml = { version = "0.9.8", default-features = false, features = ["display", "st
 json = "0.12.4"
 json5 = "0.4.1"
 glob = "0.3.3"
+thiserror = "2.0.17"
+derive_more = { version = "2.1.1", features = ["display"] }
+shellexpand = "3.1.1"
 
 [profile.release]
 codegen-units = 1 # Allows compiler to perform better optimization.
@@ -62,3 +65,6 @@ clap_mangen = "0.2.31"
 clap = { version = "4.5.51", features = ["cargo", "derive"] }
 vergen-gix = { version = "1.0.2", features = ["build", "cargo"] }
 anyhow = "1.0.100"
+
+[dev-dependencies]
+serde_test = "1.0.177"
