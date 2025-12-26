@@ -6,7 +6,7 @@ use crate::ssh::Session;
 use async_lock::Mutex as AsyncMutex;
 use clap::Parser;
 use color_eyre::eyre::{self, Result, eyre};
-use tracing::info;
+use tracing::{debug, info};
 
 mod cli;
 mod completions;
@@ -58,6 +58,7 @@ fn main() -> Result<()> {
     info!("Connecting to {}:{}", cli.host, cli.port);
     info!("Key path: {:?}", cli.private_key);
     info!("OpenSSH Certificate path: {:?}", cli.openssh_certificate);
+    debug!("Config: {:?}", cli);
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

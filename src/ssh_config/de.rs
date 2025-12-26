@@ -3,17 +3,15 @@ use std::ops::{AddAssign, MulAssign};
 use derive_more::Display;
 use serde::{
     Deserialize,
-    de::{MapAccess, SeqAccess, Visitor},
+    de::{IntoDeserializer, MapAccess, SeqAccess, Visitor},
 };
 
 type Result<T> = std::result::Result<T, ParserError>;
 
-const fn default_port() -> u16 {
-    22
-}
-
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct Host {
+    #[serde(rename = "Host")]
+    pub name: String,
     #[serde(rename = "HostName")]
     pub host_name: String,
     #[serde(rename = "User")]
@@ -24,7 +22,10 @@ pub struct Host {
     pub port: u16,
 }
 
-// Changed to a tuple struct to seamlessly support deserializing a sequence of Hosts
+const fn default_port() -> u16 {
+    22
+}
+
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct Hosts(pub Vec<Host>);
 
@@ -68,26 +69,20 @@ pub enum ParserError {
 }
 
 pub struct Deserializer<'de> {
-    // This string starts with the input data and characters are truncated off
-    // the beginning as data is parsed.
     input: &'de str,
+    // Stores the host name found in the "Host <name>" line to be injected into the map
+    pending_host: Option<String>,
 }
 
 impl<'de> Deserializer<'de> {
-    // By convention, `Deserializer` constructors are named like `from_xyz`.
-    // That way basic use cases are satisfied by something like
-    // `serde_json::from_str(...)` while advanced use cases that require a
-    // deserializer can make one with `serde_json::Deserializer::from_str(...)`.
     pub fn from_str(input: &'de str) -> Self {
-        Deserializer { input }
+        Deserializer {
+            input,
+            pending_host: None,
+        }
     }
 }
 
-// By convention, the public API of a Serde deserializer is one or more
-// `from_xyz` methods such as `from_str`, `from_bytes`, or `from_reader`
-// depending on what Rust types the deserializer is able to consume as input.
-//
-// This basic deserializer supports only `from_str`.
 pub fn from_str<'a, T>(s: &'a str) -> Result<T>
 where
     T: Deserialize<'a>,
@@ -97,7 +92,6 @@ where
     if deserializer.input.is_empty() {
         Ok(t)
     } else {
-        // Allow trailing whitespace
         let trimmed = deserializer.input.trim();
         if trimmed.is_empty() {
             Ok(t)
@@ -112,7 +106,6 @@ impl<'de> Deserializer<'de> {
         self.input.chars().next().ok_or(ParserError::Eof)
     }
 
-    // Consume the first character in the input.
     fn advance(&mut self) -> Result<char> {
         let ch = self.peek_char()?;
         self.input = &self.input[ch.len_utf8()..];
@@ -120,7 +113,6 @@ impl<'de> Deserializer<'de> {
     }
 
     fn skip_whitespace(&mut self) {
-        // Skip whitespace
         let to_skip = self
             .input
             .chars()
@@ -128,12 +120,11 @@ impl<'de> Deserializer<'de> {
             .count();
         self.input = &self.input[to_skip..];
 
-        // Skip lines starting with # (comments)
+        // Skip comments
         while self.input.starts_with('#') {
             let to_eol = self.input.chars().take_while(|ch| *ch != '\n').count();
             self.input = &self.input[to_eol..];
 
-            // Remove the newline character itself if present
             if self.input.starts_with('\n') {
                 self.input = &self.input[1..];
             }
@@ -147,11 +138,9 @@ impl<'de> Deserializer<'de> {
         }
     }
 
-    // Peeks at the next identifier without consuming it
     fn peek_identifier(&mut self) -> Result<Identifier> {
         let mut iter = self.input.chars().peekable();
 
-        // Skip whitespace
         while let Some(&ch) = iter.peek() {
             if ch.is_whitespace() {
                 iter.next();
@@ -229,6 +218,7 @@ impl<'de> Deserializer<'de> {
 
 impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
     type Error = ParserError;
+
     fn deserialize_any<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
@@ -242,6 +232,7 @@ impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         self.deserialize_str(visitor)
     }
+
     fn deserialize_string<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
@@ -277,141 +268,68 @@ impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
         visitor.visit_map(WhitespaceSeparated::new(self))
     }
 
-    fn deserialize_i8<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: serde::de::Visitor<'de>,
-    {
-        unimplemented!()
-    }
-    fn deserialize_i16<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: serde::de::Visitor<'de>,
-    {
-        unimplemented!()
-    }
-    fn deserialize_i32<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: serde::de::Visitor<'de>,
-    {
-        unimplemented!()
-    }
-    fn deserialize_i64<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: serde::de::Visitor<'de>,
-    {
-        unimplemented!()
-    }
-    fn deserialize_u8<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: serde::de::Visitor<'de>,
-    {
-        unimplemented!()
-    }
-    fn deserialize_f32<V>(self, _visitor: V) -> Result<V::Value>
-    where
-        V: Visitor<'de>,
-    {
-        unimplemented!()
-    }
-
-    // Float parsing is stupidly hard.
-    fn deserialize_f64<V>(self, _visitor: V) -> Result<V::Value>
-    where
-        V: Visitor<'de>,
-    {
-        unimplemented!()
-    }
-
-    // The `Serializer` implementation on the previous page serialized chars as
-    // single-character strings so handle that representation here.
-    fn deserialize_char<V>(self, _visitor: V) -> Result<V::Value>
-    where
-        V: Visitor<'de>,
-    {
-        // Parse a string, check that it is one character, call `visit_char`.
-        unimplemented!()
-    }
-    fn deserialize_u32<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        unimplemented!()
-    }
-
-    // Refer to the "Understanding deserializer lifetimes" page for information
-    // about the three deserialization flavors of strings in Serde.
-    // The `Serializer` implementation on the previous page serialized byte
-    // arrays as JSON arrays of bytes. Handle that representation here.
-    fn deserialize_bytes<V>(self, _visitor: V) -> Result<V::Value>
-    where
-        V: Visitor<'de>,
-    {
-        unimplemented!()
-    }
-
-    fn deserialize_byte_buf<V>(self, _visitor: V) -> Result<V::Value>
-    where
-        V: Visitor<'de>,
-    {
-        unimplemented!()
-    }
-
-    fn deserialize_option<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        unimplemented!()
-    }
-
-    fn deserialize_u64<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        unimplemented!()
-    }
-
-    fn deserialize_bool<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        unimplemented!()
-    }
-
-    fn deserialize_i128<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        unimplemented!()
-    }
-
-    fn deserialize_u128<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        unimplemented!()
-    }
-
-    fn deserialize_unit<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        unimplemented!()
-    }
-
-    fn deserialize_enum<V>(
+    fn deserialize_tuple<V>(
         self,
-        name: &'static str,
-        variants: &'static [&'static str],
+        _len: usize,
         visitor: V,
     ) -> std::result::Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        self.deserialize_seq(visitor)
     }
-    fn deserialize_tuple<V>(
+
+    fn deserialize_struct<V>(
         self,
-        len: usize,
+        _name: &'static str,
+        _fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let trimmed = self.input.trim_start();
+        self.input = trimmed;
+
+        // Check if this struct starts with the "Host" keyword
+        match self.peek_identifier() {
+            Ok(Identifier::Host) => {
+                self.parse_identifier()?; // Consume "Host"
+                self.skip_whitespace();
+                let host_name = self.parse_string()?; // Parse the alias (e.g., "mc_server")
+                self.skip_whitespace();
+
+                // Store the name to be injected when the map is visited
+                self.pending_host = Some(host_name);
+
+                let host = visitor.visit_map(WhitespaceSeparated::new(self))?;
+                Ok(host)
+            }
+            Ok(_) => {
+                // If it's not a "Host" block, just deserialize it as a map (or error)
+                // For this parser, we primarily expect "Host" blocks.
+                Err(ParserError::UnexpectedToken)
+            }
+            Err(ParserError::Eof) => Err(ParserError::Eof),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn deserialize_newtype_struct<V>(
+        self,
+        _name: &'static str,
+        visitor: V,
+    ) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_seq(visitor)
+    }
+
+    fn deserialize_tuple_struct<V>(
+        self,
+        _name: &'static str,
+        _len: usize,
         visitor: V,
     ) -> std::result::Result<V::Value, Self::Error>
     where
@@ -424,80 +342,135 @@ impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
         true
     }
 
-    fn deserialize_struct<V>(
-        self,
-        _name: &'static str,
-        _fields: &'static [&'static str],
-        visitor: V,
-    ) -> Result<V::Value>
+    // Stub implementations for remaining traits
+    fn deserialize_i8<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        // Check if we are deserializing a Host or Hosts struct
-        // Note: Since we changed Hosts to a tuple struct, deserialize_struct might not be called for it
-        // depending on serde internals, but if it were a named struct it would.
-        // Here we specifically handle the "Host" keyword parsing.
-
-        // For the top-level file parsing into Hosts (tuple struct), deserialize_seq is usually called.
-        // This method is primarily for parsing a single "Host" block.
-
-        let trimmed = self.input.trim_start();
-        self.input = trimmed;
-
-        // Peek to ensure we are at a Host block
-        match self.peek_identifier() {
-            Ok(Identifier::Host) => {
-                self.parse_identifier()?; // "Host"
-                self.advance()?; // space
-                self.parse_string()?; // alias (discarded)
-                self.advance()?; // newline
-
-                let host = visitor.visit_map(WhitespaceSeparated::new(self))?;
-                Ok(host)
-            }
-            Ok(_) => Err(ParserError::UnexpectedToken),
-            Err(ParserError::Eof) => Err(ParserError::Eof),
-            Err(e) => Err(e),
-        }
+        unimplemented!()
     }
-
-    fn deserialize_unit_struct<V>(
+    fn deserialize_i16<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_i32<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_i64<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_u8<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_f32<V>(self, _: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_f64<V>(self, _: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_char<V>(self, _: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_u32<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_bytes<V>(self, _: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_byte_buf<V>(self, _: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_option<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_u64<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_bool<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_i128<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_u128<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_unit<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        unimplemented!()
+    }
+    fn deserialize_enum<V>(
         self,
-        name: &'static str,
-        visitor: V,
+        _: &'static str,
+        _: &'static [&'static str],
+        _: V,
     ) -> std::result::Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
         unimplemented!()
     }
-    fn deserialize_ignored_any<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        visitor.visit_unit()
-    }
-    fn deserialize_tuple_struct<V>(
+    fn deserialize_unit_struct<V>(
         self,
-        name: &'static str,
-        len: usize,
-        visitor: V,
+        _: &'static str,
+        _: V,
     ) -> std::result::Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_seq(visitor)
+        unimplemented!()
     }
-
-    fn deserialize_newtype_struct<V>(
-        self,
-        name: &'static str,
-        visitor: V,
-    ) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_ignored_any<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_seq(visitor)
+        unimplemented!()
     }
 }
 
@@ -527,19 +500,9 @@ impl<'a, 'de> SeqAccess<'de> for HostsSeqAccess<'a, 'de> {
             return Ok(None);
         }
 
-        // Peek to see if we are starting a Host block
         match self.de.peek_identifier() {
-            Ok(Identifier::Host) => {
-                // Deserialize this Host
-                seed.deserialize(&mut *self.de).map(Some)
-            }
-            Ok(_) => {
-                // Found a token that isn't "Host" at the sequence level
-                // Depending on strictness, we could error or ignore.
-                // For SSH config, we expect Host blocks.
-                // Let's return an error as this is likely malformed.
-                Err(ParserError::UnexpectedToken)
-            }
+            Ok(Identifier::Host) => seed.deserialize(&mut *self.de).map(Some),
+            Ok(_) => Err(ParserError::UnexpectedToken),
             Err(ParserError::Eof) => Ok(None),
             Err(e) => Err(e),
         }
@@ -548,64 +511,37 @@ impl<'a, 'de> SeqAccess<'de> for HostsSeqAccess<'a, 'de> {
 
 struct WhitespaceSeparated<'a, 'de: 'a> {
     de: &'a mut Deserializer<'de>,
-    first: bool,
 }
 
 impl<'a, 'de> WhitespaceSeparated<'a, 'de> {
     fn new(de: &'a mut Deserializer<'de>) -> Self {
-        Self { de, first: true }
-    }
-}
-
-impl<'a, 'de> serde::de::SeqAccess<'de> for WhitespaceSeparated<'a, 'de> {
-    type Error = ParserError;
-
-    fn next_element_seed<T>(
-        &mut self,
-        seed: T,
-    ) -> std::result::Result<Option<T::Value>, Self::Error>
-    where
-        T: serde::de::DeserializeSeed<'de>,
-    {
-        // This implementation is kept for completeness but might not be used for the primary logic
-        // which relies on MapAccess for Hosts.
-        if self.de.peek_char()? == '\n' {
-            return Ok(None);
-        }
-        if !self.first && self.de.advance()? != ' ' {
-            return Err(ParserError::UnexpectedToken);
-        }
-
-        self.first = false;
-        seed.deserialize(&mut *self.de).map(Some)
+        Self { de }
     }
 }
 
 impl<'a, 'de> MapAccess<'de> for WhitespaceSeparated<'a, 'de> {
     type Error = ParserError;
+
     fn next_key_seed<K>(&mut self, seed: K) -> std::result::Result<Option<K::Value>, Self::Error>
     where
         K: serde::de::DeserializeSeed<'de>,
     {
+        // If we have a pending host name (from the "Host" line), inject it into the map
+        if let Some(_) = self.de.pending_host {
+            // The Host struct has a field renamed to "Host", so we inject that key
+            return seed.deserialize("Host".into_deserializer()).map(Some);
+        }
+
         self.de.skip_whitespace();
 
         if self.de.input.is_empty() {
             return Ok(None);
         }
 
-        // Check if the next token is "Host", indicating the start of a new host block
-        // If so, the current map (Host) is finished.
+        // If we encounter another "Host" identifier, the current host block is finished
         if let Ok(Identifier::Host) = self.de.peek_identifier() {
             return Ok(None);
         }
-
-        // Reset first flag is not really applicable here as this is map access,
-        // but we ensure we don't consume newlines as separators unless necessary.
-        // The current format is Key Value \n Key Value
-
-        // Note: We don't use self.first here because map keys in SSH config
-        // don't have a leading separator like the first element of a line usually does in other formats.
-        // The first call should succeed immediately if the input pointer is at a Key.
 
         seed.deserialize(&mut *self.de).map(Some)
     }
@@ -614,6 +550,11 @@ impl<'a, 'de> MapAccess<'de> for WhitespaceSeparated<'a, 'de> {
     where
         V: serde::de::DeserializeSeed<'de>,
     {
+        // If we have a pending host value, return it and clear the buffer
+        if let Some(host_name) = self.de.pending_host.take() {
+            return seed.deserialize(host_name.into_deserializer());
+        }
+
         self.de.skip_whitespace();
         seed.deserialize(&mut *self.de)
     }
@@ -628,13 +569,12 @@ mod tests {
     #[test]
     fn test_deserialize_host() {
         let test_str = "Host mc_server
-    HostName 141.148.218.223
-    User opc
+	HostName 141.148.218.223
+	User opc
         Port 22
-    IdentityFile ~/Downloads/ssh-key-2024-06-13.key ";
-        println!("starting deserialization");
+	IdentityFile ~/Downloads/ssh-key-2024-06-13.key ";
         let host: Host = from_str(test_str.trim()).unwrap();
-        println!("{:?}", host);
+        assert_eq!(host.name, "mc_server");
         assert_eq!(host.host_name, "141.148.218.223");
         assert_eq!(host.user, "opc");
         assert_eq!(host.port, 22);
@@ -643,26 +583,26 @@ mod tests {
     #[test]
     fn test_deserialize_hosts_multiple() {
         let test_str = "Host mc_server
-    HostName 141.148.218.223
-    User opc
-    Port 22
-    IdentityFile ~/Downloads/ssh-key-2024-06-13.key
-
+	HostName 141.148.218.223
+	User opc
+        Port 22
+	IdentityFile ~/Downloads/ssh-key-2024-06-13.key
 Host git_server
-    HostName github.com
-    User git
-    Port 2222
-    IdentityFile ~/.ssh/id_rsa";
+	HostName github.com
+	User git
+	Port 2222
+	IdentityFile ~/.ssh/id_rsa";
 
         let hosts: Hosts = from_str(test_str).unwrap();
-        println!("{:?}", hosts);
         assert_eq!(hosts.0.len(), 2);
 
         let h1 = &hosts.0[0];
+        assert_eq!(h1.name, "mc_server");
         assert_eq!(h1.host_name, "141.148.218.223");
         assert_eq!(h1.user, "opc");
 
         let h2 = &hosts.0[1];
+        assert_eq!(h2.name, "git_server");
         assert_eq!(h2.host_name, "github.com");
         assert_eq!(h2.user, "git");
         assert_eq!(h2.port, 2222);
@@ -670,7 +610,9 @@ Host git_server
 
     #[test]
     fn test_de_tokens_host() {
+        // Note: The tokens reflect the internal view where "Host" becomes a map key
         let host = Host {
+            name: "mc_server".to_string(),
             host_name: "141.148.218.223".to_string(),
             user: "opc".to_string(),
             identity_file: "~/Downloads/ssh-key-2024-06-13.key".to_string(),
@@ -681,8 +623,10 @@ Host git_server
             &[
                 Token::Struct {
                     name: "Host",
-                    len: 4,
+                    len: 5,
                 },
+                Token::Str("Host"),
+                Token::Str("mc_server"),
                 Token::Str("HostName"),
                 Token::Str("141.148.218.223"),
                 Token::Str("User"),

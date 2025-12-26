@@ -89,7 +89,7 @@ pub struct ConnectArgs {
     pub path: Option<PathBuf>,
 
     #[clap(short, long)]
-    pub from_config: Option<String>,
+    pub from_config: bool,
 }
 
 #[derive(Debug, Clone, Default)]

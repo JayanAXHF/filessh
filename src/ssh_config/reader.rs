@@ -18,10 +18,10 @@ const SSH_CONFIG_PATHS: LazyLock<[String; 1]> = LazyLock::new(|| {
 });
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-const SSH_CONFIG_PATH: LazyLock<[String; 2]> = LazyLock::new(|| {
+const SSH_CONFIG_PATH: LazyLock<[String; 1]> = LazyLock::new(|| {
     let mut path = std::env::var("HOME").unwrap();
     path.push_str(r#"/.ssh/config"#);
-    [path, "/etc/ssh/ssh_config".to_string()]
+    [path]
 });
 
 impl SSHConfigReader {
@@ -32,8 +32,9 @@ impl SSHConfigReader {
     pub fn read(&mut self) -> Result<()> {
         let paths = SSH_CONFIG_PATH.clone();
         for path in paths {
-            if std::path::Path::new(&path).exists() {
-                let f = std::fs::File::open(path)?;
+            let path = std::path::Path::new(&path);
+            if path.exists() {
+                let f = std::fs::File::open(path.canonicalize()?)?;
                 std::io::BufReader::new(f).read_to_string(&mut self.buf)?;
             }
         }
