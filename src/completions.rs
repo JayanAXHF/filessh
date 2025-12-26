@@ -13,7 +13,7 @@ pub fn generate_completion(shell: Shell) -> Result<(String, Vec<u8>)> {
     let name = cmd.get_name().to_string();
 
     let mut buf = Vec::new();
-    clap_complete::generate(shell, &mut cmd, name.clone(), &mut buf);
+    clap_complete::generate(shell, &mut cmd, name.as_str(), &mut buf);
 
     Ok((name, buf))
 }

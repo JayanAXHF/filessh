@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::path::MAIN_SEPARATOR;
 
 use derive_getters::Getters;
@@ -53,46 +54,46 @@ pub struct MetadataSlice<'a>(pub &'a [MetadataTable]);
 impl<'a> MetadataSlice<'a> {
     pub fn from_attributes(value: Metadata, rows: &'a mut Vec<MetadataTable>) -> Self {
         rows.push(MetadataTable::new(
-            "size".into(),
-            human_readable_size(value.size.unwrap_or_default()),
+            "size",
+            human_readable_size(value.size.unwrap_or_default()).as_ref(),
         ));
 
         rows.push(MetadataTable::new(
-            "uid".into(),
-            value.uid.map(|v| v.to_string()).unwrap_or_default(),
+            "uid",
+            &value.uid.map(|v| v.to_string()).unwrap_or_default(),
         ));
 
         rows.push(MetadataTable::new(
-            "user".into(),
-            value.user.clone().unwrap_or_default(),
+            "user",
+            value.user.as_deref().unwrap_or_default(),
         ));
 
         rows.push(MetadataTable::new(
-            "gid".into(),
-            value.gid.map(|v| v.to_string()).unwrap_or_default(),
+            "gid",
+            &value.gid.map(|v| v.to_string()).unwrap_or_default(),
         ));
 
         rows.push(MetadataTable::new(
-            "group".into(),
-            value.group.clone().unwrap_or_default(),
+            "group",
+            value.group.as_deref().unwrap_or_default(),
         ));
 
         rows.push(MetadataTable::new(
-            "permissions".into(),
-            value
+            "permissions",
+            &value
                 .permissions
                 .map(|p| format!("{:o}", p)) // octal formatting e.g. 755
                 .unwrap_or_default(),
         ));
 
         rows.push(MetadataTable::new(
-            "access time".into(),
-            format_timestamp(value.atime).unwrap_or_default(),
+            "access time",
+            &format_timestamp(value.atime).unwrap_or_default(),
         ));
 
         rows.push(MetadataTable::new(
-            "modification time".into(),
-            format_timestamp(value.mtime).unwrap_or_default(),
+            "modification time",
+            &format_timestamp(value.mtime).unwrap_or_default(),
         ));
 
         Self(rows)
@@ -100,7 +101,7 @@ impl<'a> MetadataSlice<'a> {
 }
 
 impl MetadataTable {
-    pub fn new(attribute: String, value: String) -> Self {
+    pub fn new(attribute: &str, value: &str) -> Self {
         Self {
             attribute: attribute.into(),
             value: value.into(),
@@ -123,11 +124,11 @@ impl<'a> TableData<'a> for MetadataSlice<'a> {
         let entry = &self.0[row];
         match column {
             0 => {
-                let span = Span::from(entry.attribute.clone().to_string());
+                let span = Span::from(entry.attribute.as_ref());
                 span.render(area, buf);
             }
             1 => {
-                let span = Span::from(entry.value.clone().to_string());
+                let span = Span::from(entry.value.as_ref());
                 span.render(area, buf);
             }
             _ => {}
@@ -189,7 +190,7 @@ impl From<FileEntry> for Paragraph<'_> {
             Line::from(vec![
                 Span::styled("owner: ", ratatui::style::Color::White),
                 Span::styled(
-                    value.attributes.clone().user.unwrap_or("N/A".to_string()),
+                    value.attributes.user.unwrap_or("N/A".to_string()),
                     ratatui::style::Color::White,
                 ),
             ]),
@@ -205,8 +206,6 @@ pub struct FileDataSlice<'a>(pub &'a [FileEntry]);
 
 impl FileEntry {
     pub fn from_file(name: String, type_: FileType, attributes: FileAttributes) -> Self {
-        let name = name.to_string();
-
         Self {
             name,
             type_,
@@ -298,7 +297,7 @@ impl<'a> TableData<'a> for FileDataSlice<'a> {
                 let entry_span = if entry.is_dir() {
                     ratatui_macros::span![entry.name.clone() + "/"].blue()
                 } else {
-                    ratatui_macros::span![entry.name.clone()]
+                    ratatui_macros::span![entry.name.as_str()]
                 };
                 let mut line = ratatui_macros::line![
                     vertical_line_symbol.clone() + span_prefix + " ",
@@ -337,11 +336,11 @@ impl<'a> TableData<'a> for FileDataSlice<'a> {
     }
 }
 
-fn human_readable_size(bytes: u64) -> String {
+fn human_readable_size<'a>(bytes: u64) -> Cow<'a, str> {
     const UNITS: [&str; 6] = ["B", "KB", "MB", "GB", "TB", "PB"];
 
     if bytes == 0 {
-        return "0 B".to_string();
+        return "0 B".into();
     }
 
     let exp = (bytes as f64).log10() / 1024f64.log10();
@@ -351,11 +350,11 @@ fn human_readable_size(bytes: u64) -> String {
     let size = bytes as f64 / 1024f64.powi(idx as i32);
 
     if size < 10.0 {
-        format!("{:.2} {}", size, UNITS[idx])
+        format!("{:.2} {}", size, UNITS[idx]).into()
     } else if size < 100.0 {
-        format!("{:.1} {}", size, UNITS[idx])
+        format!("{:.1} {}", size, UNITS[idx]).into()
     } else {
-        format!("{:.0} {}", size, UNITS[idx])
+        format!("{:.0} {}", size, UNITS[idx]).into()
     }
 }
 

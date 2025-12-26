@@ -28,7 +28,7 @@ fn main() -> Result<()> {
     info!("Starting...");
     let cli = Cli::parse();
     errors::init()?;
-    match cli.command.clone() {
+    match cli.command.as_ref() {
         Some(Commands::InstallManPages) => return config::install_manpages(),
         Some(Commands::InstallCompletions { shell }) => {
             use clap_complete::Shell;
