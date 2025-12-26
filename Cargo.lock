@@ -1445,7 +1445,7 @@ checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
 
 [[package]]
 name = "filessh"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "async-lock",
