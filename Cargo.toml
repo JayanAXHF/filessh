@@ -64,3 +64,6 @@ clap_mangen = "0.2.31"
 clap = { version = "4.5.51", features = ["cargo", "derive"] }
 vergen-gix = { version = "1.0.2", features = ["build", "cargo"] }
 anyhow = "1.0.100"
+
+[dev-dependencies]
+serde_test = "1.0.177"

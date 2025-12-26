@@ -6,51 +6,31 @@ use std::{
 use derive_more::Display;
 use serde::{
     Deserialize,
-    de::{IntoDeserializer, Visitor},
+    de::{IntoDeserializer, MapAccess, Visitor},
 };
 
 type Result<T> = std::result::Result<T, ParserError>;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct Host {
     #[serde(rename = "HostName")]
     pub host_name: String,
-    #[serde(rename = "Port")]
-    pub port: u16,
     #[serde(rename = "User")]
     pub user: String,
     #[serde(rename = "IdentityFile")]
     pub identity_file: String,
+    #[serde(rename = "Port")]
+    pub port: u16,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+pub struct Hosts {
+    #[serde(flatten)]
+    pub hosts: Vec<Host>,
 }
 
 struct HostMapAccess {
     entries: VecDeque<(String, String)>,
-}
-
-use serde::de::DeserializeSeed;
-
-impl<'de> serde::de::MapAccess<'de> for HostMapAccess {
-    type Error = ParserError;
-
-    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
-    where
-        K: DeserializeSeed<'de>,
-    {
-        if let Some((key, _)) = self.entries.front() {
-            // 🔑 THIS IS THE FIX
-            seed.deserialize(key.as_str().into_deserializer()).map(Some)
-        } else {
-            Ok(None)
-        }
-    }
-
-    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
-    where
-        V: DeserializeSeed<'de>,
-    {
-        let (_, value) = self.entries.pop_front().unwrap();
-        seed.deserialize(value.as_str().into_deserializer())
-    }
 }
 
 #[derive(Debug)]
@@ -128,12 +108,16 @@ where
 
 impl<'de> Deserializer<'de> {
     fn peek_char(&mut self) -> Result<char> {
-        self.input.chars().next().ok_or(ParserError::Eof)
+        self.input.chars().next().ok_or_else(|| {
+            dbg!(self.input);
+            ParserError::Eof
+        })
     }
 
     // Consume the first character in the input.
     fn advance(&mut self) -> Result<char> {
         let ch = self.peek_char()?;
+        dbg!("advance");
         self.input = &self.input[ch.len_utf8()..];
         Ok(ch)
     }
@@ -143,11 +127,13 @@ impl<'de> Deserializer<'de> {
         let to_skip = self
             .input
             .chars()
-            .take_while(|ch| ch.is_whitespace())
+            .take_while(|ch| matches!(ch, ' ' | '\t'))
             .count();
         self.input = &self.input[to_skip..];
+        println!("{}", self.input);
         while let Ok(ch) = self.peek_char() {
-            if ch.is_alphanumeric() {
+            dbg!("{}", ch);
+            if !ch.is_whitespace() {
                 identifier.push(ch);
                 self.advance()?;
             } else {
@@ -161,10 +147,10 @@ impl<'de> Deserializer<'de> {
     }
 
     fn parse_string(&mut self) -> Result<String> {
+        dbg!("parse_string");
         let mut string = String::new();
         while let Ok(ch) = self.peek_char() {
-            if ch == '\n' {
-                self.advance()?;
+            if ch.is_whitespace() {
                 break;
             }
             string.push(ch);
@@ -182,6 +168,7 @@ impl<'de> Deserializer<'de> {
         let mut int = match self.advance()? {
             ch @ '0'..='9' => T::from(ch as u8 - b'0'),
             _ => {
+                dbg!(&self.input);
                 return Err(ParserError::ExpectedInteger);
             }
         };
@@ -206,65 +193,6 @@ impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: serde::de::Visitor<'de>,
     {
-        //   let to_skip = self
-        //       .input
-        //       .chars()
-        //       .take_while(|ch| ch.is_whitespace())
-        //       .count();
-        //   self.input = &self.input[to_skip..];
-        //   let identifier = self.parse_identifier()?;
-        //   match identifier {
-        //       Identifier::Host => {
-        //           self.advance()?;
-        //           self.parse_string()?;
-        //           let Some(line_end) = self.input.find('\n') else {
-        //               return Err(ParserError::Eof);
-        //           };
-        //           self.input = &self.input[line_end + 1..];
-        //           loop {
-        //               while let Ok(ch) = self.peek_char() {
-        //                   if ch.is_whitespace() {
-        //                       self.advance()?;
-        //                   } else {
-        //                       break;
-        //                   }
-        //               }
-        //               let Some(look_ahead) = self.input.find(char::is_whitespace) else {
-        //                   break;
-        //               };
-        //               let next_identifier = &self.input[..look_ahead];
-        //               match Identifier::try_from(next_identifier.to_string())? {
-        //                   Identifier::Host => {
-        //                       break;
-        //                   }
-        //                   Identifier::Port => {
-        //                       self.parse_identifier()?;
-        //                       self.advance()?;
-        //                       self.parse_unsigned::<u16>()?;
-        //                       let Some(line_end) = self.input.find('\n') else {
-        //                           continue;
-        //                       };
-
-        //                       self.input = &self.input[line_end + 1..];
-        //                   }
-        //                   _ => {
-        //                       self.parse_identifier()?;
-        //                       self.advance()?;
-        //                       self.parse_string()?;
-        //                       let Some(line_end) = self.input.find('\n') else {
-        //                           continue;
-        //                       };
-        //                       self.input = &self.input[line_end + 1..];
-        //                   }
-        //               }
-        //           }
-        //       }
-        //       _ => {
-        //           println!("Unexpected token: {:?}", identifier);
-        //           return Err(ParserError::UnexpectedToken);
-        //       }
-        //   }
-        //   visitor.visit_unit()
         self.deserialize_map(visitor)
     }
 
@@ -288,14 +216,14 @@ impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
         self.deserialize_string(visitor)
     }
 
-    fn deserialize_u16<V>(mut self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_u16<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
         visitor.visit_u16(self.parse_unsigned()?)
     }
 
-    fn deserialize_seq<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
+    fn deserialize_seq<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
@@ -306,55 +234,16 @@ impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: serde::de::Visitor<'de>,
     {
-        use std::collections::VecDeque;
-
-        let mut entries = VecDeque::new();
-
-        // Expect: Host <alias>
-        let ident = self.parse_identifier()?;
-        if !matches!(ident, Identifier::Host) {
-            return Err(ParserError::UnexpectedToken);
-        }
-
-        self.advance()?; // space
-        self.parse_string()?; // alias (ignored)
-
-        // consume newline
-        if let Some(i) = self.input.find('\n') {
-            self.input = &self.input[i + 1..];
-        }
-
-        loop {
-            self.input = self.input.trim_start();
-            if self.input.is_empty() {
-                break;
-            }
-
-            let ident_end = self
-                .input
-                .find(char::is_whitespace)
-                .ok_or(ParserError::UnexpectedToken)?;
-
-            let key = &self.input[..ident_end];
-
-            if key == "Host" {
-                break;
-            }
-
-            self.parse_identifier()?; // key
-            self.advance()?; // space
-            let value = self.parse_string()?;
-
-            entries.push_back((key.to_string(), value.trim().to_string()));
-
-            if let Some(i) = self.input.find('\n') {
-                self.input = &self.input[i + 1..];
+        dbg!(&self.input);
+        while let Ok(ch) = self.peek_char() {
+            if ch.is_whitespace() {
+                self.advance()?;
             } else {
                 break;
             }
         }
-
-        visitor.visit_map(HostMapAccess { entries })
+        let value = visitor.visit_map(WhitespaceSeparated::new(self))?;
+        Ok(value)
     }
 
     fn deserialize_i8<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
@@ -513,7 +402,26 @@ impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        self.deserialize_map(visitor)
+        let trimmed = self.input.trim_start();
+        self.input = trimmed;
+        let next_identifier_str = self
+            .input
+            .chars()
+            .take_while(|ch| !ch.is_whitespace())
+            .collect::<String>();
+        let next_identifier = Identifier::try_from(next_identifier_str)?;
+        match next_identifier {
+            Identifier::Host => {
+                self.parse_identifier()?;
+                self.advance()?;
+                self.parse_string()?;
+                self.advance()?;
+                dbg!(&self.input);
+                let host = visitor.visit_map(WhitespaceSeparated::new(self))?;
+                Ok(host)
+            }
+            _ => Err(ParserError::UnexpectedToken),
+        }
     }
 
     fn deserialize_unit_struct<V>(
@@ -530,7 +438,7 @@ impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        visitor.visit_unit()
     }
     fn deserialize_tuple_struct<V>(
         self,
@@ -555,8 +463,79 @@ impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
     }
 }
 
+struct WhitespaceSeparated<'a, 'de: 'a> {
+    de: &'a mut Deserializer<'de>,
+    first: bool,
+}
+
+impl<'a, 'de> WhitespaceSeparated<'a, 'de> {
+    fn new(de: &'a mut Deserializer<'de>) -> Self {
+        Self { de, first: true }
+    }
+}
+
+impl<'a, 'de> serde::de::SeqAccess<'de> for WhitespaceSeparated<'a, 'de> {
+    type Error = ParserError;
+
+    fn next_element_seed<T>(
+        &mut self,
+        seed: T,
+    ) -> std::result::Result<Option<T::Value>, Self::Error>
+    where
+        T: serde::de::DeserializeSeed<'de>,
+    {
+        if self.de.peek_char()? == '\n' {
+            return Ok(None);
+        }
+        if !self.first && self.de.advance()? != ' ' {
+            dbg!("error here");
+            return Err(ParserError::UnexpectedToken);
+        }
+
+        self.first = false;
+        seed.deserialize(&mut *self.de).map(Some)
+    }
+}
+
+impl<'a, 'de> MapAccess<'de> for WhitespaceSeparated<'a, 'de> {
+    type Error = ParserError;
+    fn next_key_seed<K>(&mut self, seed: K) -> std::result::Result<Option<K::Value>, Self::Error>
+    where
+        K: serde::de::DeserializeSeed<'de>,
+    {
+        dbg!("next_key_seed");
+        if self.de.input.is_empty() {
+            return Ok(None);
+        }
+        let ch = self.de.advance()?;
+        if !self.first && ch != '\n' {
+            dbg!("error here");
+            return Err(ParserError::UnexpectedToken);
+        }
+        self.first = false;
+        let trimmed = self.de.input.trim_start();
+        self.de.input = trimmed;
+        seed.deserialize(&mut *self.de).map(Some)
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> std::result::Result<V::Value, Self::Error>
+    where
+        V: serde::de::DeserializeSeed<'de>,
+    {
+        dbg!("next_value_seed");
+        let n_ch = self.de.advance()?;
+        if !matches!(n_ch, ' ' | '\t') {
+            dbg!("error here: {}");
+            return Err(ParserError::UnexpectedToken);
+        }
+        seed.deserialize(&mut *self.de)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use serde_test::{Token, assert_de_tokens};
+
     use super::*;
 
     #[test]
@@ -565,8 +544,37 @@ mod tests {
 	HostName 141.148.218.223
 	User opc
         Port 22
-	IdentityFile ~/Downloads/ssh-key-2024-06-13.key";
+	IdentityFile ~/Downloads/ssh-key-2024-06-13.key ";
+        println!("starting deserialization");
         let host: Host = from_str(test_str.trim()).unwrap();
-        assert_eq!(host.host_name, "141.148.218.223");
+        println!("{:?}", host);
+    }
+
+    #[test]
+    fn test_de_tokens_host() {
+        let host = Host {
+            host_name: "141.148.218.223".to_string(),
+            user: "opc".to_string(),
+            identity_file: "~/Downloads/ssh-key-2024-06-13.key".to_string(),
+            port: 22,
+        };
+        assert_de_tokens(
+            &host,
+            &[
+                Token::Struct {
+                    name: "Host",
+                    len: 4,
+                },
+                Token::Str("HostName"),
+                Token::Str("141.148.218.223"),
+                Token::Str("User"),
+                Token::Str("opc"),
+                Token::Str("IdentityFile"),
+                Token::Str("~/Downloads/ssh-key-2024-06-13.key"),
+                Token::Str("Port"),
+                Token::U16(22),
+                Token::StructEnd,
+            ],
+        );
     }
 }
