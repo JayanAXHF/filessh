@@ -18,7 +18,7 @@ const SSH_CONFIG_PATHS: LazyLock<[String; 1]> = LazyLock::new(|| {
 });
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-const SSH_CONFIG_PATH: LazyLock<[String; 1]> = LazyLock::new(|| {
+static SSH_CONFIG_PATH: LazyLock<[String; 1]> = LazyLock::new(|| {
     let mut path = std::env::var("HOME").unwrap();
     path.push_str(r#"/.ssh/config"#);
     [path]

@@ -216,7 +216,7 @@ impl<'de> Deserializer<'de> {
     }
 }
 
-impl<'de, 'a> serde::Deserializer<'de> for &'a mut Deserializer<'de> {
+impl<'de> serde::Deserializer<'de> for & mut Deserializer<'de> {
     type Error = ParserError;
 
     fn deserialize_any<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
@@ -527,7 +527,7 @@ impl<'a, 'de> MapAccess<'de> for WhitespaceSeparated<'a, 'de> {
         K: serde::de::DeserializeSeed<'de>,
     {
         // If we have a pending host name (from the "Host" line), inject it into the map
-        if let Some(_) = self.de.pending_host {
+        if self.de.pending_host.is_some() {
             // The Host struct has a field renamed to "Host", so we inject that key
             return seed.deserialize("Host".into_deserializer()).map(Some);
         }

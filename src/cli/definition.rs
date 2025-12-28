@@ -2,10 +2,9 @@
 //! to allow for the buils.rs script to
 //! generate the man pages and completions
 //! for the CLI at build time.
-use clap::Parser;
-use clap::command;
 use clap::crate_authors;
 use std::path::PathBuf;
+use clap::Parser;
 
 use std::sync::LazyLock;
 
