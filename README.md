@@ -4,7 +4,6 @@
 ![crates.io](https://img.shields.io/crates/v/filessh)
 ![GitHub Tag](https://img.shields.io/github/v/tag/jayanaxhf/filessh)
 
-
 A TUI-based file explorer for SSH servers, which allows you to browse and manage files on a remote server, edit them in-place, and recursively download directories with parallel directory traversal. It also has the ability to quickly spawn SSH sessions to paths on the remote server.
 
 Dual-licensed under MIT or the [UNLICENSE](https://unlicense.org/).
@@ -12,10 +11,19 @@ Dual-licensed under MIT or the [UNLICENSE](https://unlicense.org/).
 ![Made with VHS](https://vhs.charm.sh/vhs-3OLXZvjKpqe5qR7hxsftQF.gif)
 
 ## Installation
+
+### homebrew (macOS)
+
+```bash
+brew install jayanaxhf/taps/filessh
+```
+
 ### Cargo
+
 ```sh
 cargo install --locked filessh
 ```
+
 ### Build from source
 
 1.  Ensure you have Rust and Cargo installed. You can find installation instructions at [rust-lang.org](https://www.rust-lang.org/tools/install).
@@ -40,7 +48,9 @@ cargo install --locked filessh
 ```sh
 filessh [OPTIONS] <HOST> <PATH>
 ```
+
 ### Features
+
 1. Modify, delete and browse files on a remote server
 2. Recursively download directories with parallel directory traversal
 3. Quickly open SSH sessions to directories.
