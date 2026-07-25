@@ -53,7 +53,7 @@ impl ConnectArgs {
             config_reader.read()?;
             let config = config_reader.finalize();
             let config: Hosts = ssh_config::from_str(&config)?;
-            let Some(host_config) = config.0.iter().find(|h| &h.name == host) else {
+            let Some(host_config) = config.0.iter().find(|h| h.matches(host)) else {
                 return Err(eyre!("Host not found in config file"));
             };
             let path = self
@@ -69,14 +69,31 @@ impl ConnectArgs {
                 identity_file,
                 name: _,
             } = host_config;
-            debug!("pvt_key_path: {:?}", identity_file);
-            let pvt_key_path = shellexpand::full(&identity_file)?;
-            let pvt_key_path = PathBuf::from(pvt_key_path.as_ref()).canonicalize()?;
+
+            // Each of these keywords is optional in the config, so fall back
+            // the way ssh does: an absent HostName means the alias is itself
+            // the host name, and command line flags win over the config.
+            let private_key = match (self.private_key.clone(), identity_file.as_deref()) {
+                (Some(path), _) => path,
+                (None, Some(file)) => {
+                    let expanded = shellexpand::full(file)?;
+                    PathBuf::from(expanded.as_ref())
+                        .canonicalize()
+                        .wrap_err_with(|| format!("IdentityFile {file} of Host {host}"))?
+                }
+                (None, None) => {
+                    return Err(eyre!(
+                        "Host {host} has no IdentityFile in your SSH config; pass --private-key"
+                    ));
+                }
+            };
+            debug!("pvt_key_path: {:?}", private_key);
+
             return Ok(ResolvedConnectArgs {
-                host: host_name.to_string(),
+                host: host_name.clone().unwrap_or_else(|| host.clone()),
                 port: *port,
-                username: Some(user.to_owned()),
-                private_key: pvt_key_path,
+                username: self.username.clone().or_else(|| user.clone()),
+                private_key,
                 openssh_certificate: self.openssh_certificate.clone(),
                 path,
             });
