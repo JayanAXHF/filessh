@@ -281,7 +281,8 @@ pub fn render(
         Direction::Vertical,
         [
             Constraint::Fill(1),
-            Constraint::Length(if state.is_downloading { 9 } else { 4 }),
+            // Two borders plus three lines of hints, or the download gauge.
+            Constraint::Length(if state.is_downloading { 9 } else { 5 }),
         ],
     )
     .split(right_bottom)
@@ -382,7 +383,20 @@ pub fn render(
         .flatten()
         .cloned()
         .collect::<Vec<_>>();
-        Paragraph::new(vec![Line::from(hints), Line::from(hints_2)])
+        let hints_3 = [
+            keybind("C-q", "Quit  "),
+            keybind("C-o", "SSH Here  "),
+            keybind(".", "Dotfiles  "),
+        ]
+        .iter()
+        .flatten()
+        .cloned()
+        .collect::<Vec<_>>();
+        Paragraph::new(vec![
+            Line::from(hints),
+            Line::from(hints_2),
+            Line::from(hints_3),
+        ])
             .styles(ctx.theme.paragraph_style())
             .alignment(ratatui::layout::Alignment::Center)
             .block(

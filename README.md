@@ -94,3 +94,37 @@ Options:
     example.com \
     /home/myuser
 ```
+
+### Keybindings
+
+**To quit, press <kbd>Ctrl</kbd>+<kbd>q</kbd>.**
+
+The interface has three panes: the file list, the metadata and file content
+pane, and the input box that prompts appear in.
+
+| Key | Action |
+| --- | --- |
+| <kbd>Ctrl</kbd>+<kbd>q</kbd> | Quit |
+| <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> | Move focus between the panes |
+| <kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd> | Focus the file list, the content pane, or the input box |
+| <kbd>Esc</kbd> | Return to the file list, clearing any prompt or filter |
+
+In the file list:
+
+| Key | Action |
+| --- | --- |
+| <kbd>j</kbd> / <kbd>k</kbd>, <kbd>↓</kbd> / <kbd>↑</kbd> | Move the selection |
+| <kbd>l</kbd> / <kbd>→</kbd> | Enter the selected directory |
+| <kbd>h</kbd> / <kbd>←</kbd> | Go to the parent directory |
+| <kbd>Enter</kbd> | Show the selected file's contents in the content pane |
+| <kbd>e</kbd> | Edit the file in `$EDITOR`, after <kbd>Enter</kbd> has loaded it |
+| <kbd>d</kbd> | Download the selection, prompting for a local path |
+| <kbd>f</kbd> | Filter the list by name, as you type |
+| <kbd>m</kbd> | Rename or move the selection |
+| <kbd>x</kbd> | Delete the selection, confirming with <kbd>y</kbd> |
+| <kbd>n</kbd> <kbd>f</kbd> | Create a file |
+| <kbd>n</kbd> <kbd>d</kbd> | Create a directory |
+| <kbd>.</kbd> | Hide dotfiles, which are shown by default |
+| <kbd>Ctrl</kbd>+<kbd>o</kbd> | Open an SSH session in the current directory |
+
+At a prompt, <kbd>Enter</kbd> accepts and <kbd>Esc</kbd> cancels.
