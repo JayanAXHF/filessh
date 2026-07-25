@@ -281,8 +281,7 @@ pub fn render(
         Direction::Vertical,
         [
             Constraint::Fill(1),
-            // Two borders plus three lines of hints, or the download gauge.
-            Constraint::Length(if state.is_downloading { 9 } else { 5 }),
+            Constraint::Length(if state.is_downloading { 9 } else { 4 }),
         ],
     )
     .split(right_bottom)
@@ -364,6 +363,9 @@ pub fn render(
         state.effects.process_effects(el.into(), buf, rb_bottom);
     } else {
         let hints = [
+            // Quit first: the panel is clipped on the right at most widths, and
+            // this is the one binding that cannot be guessed.
+            keybind("C-q", "Quit  "),
             keybind("Tab", "Focus  "),
             keybind("h/j/k/l", "Navigate Table  "),
             keybind("d", "Download  "),
@@ -383,20 +385,7 @@ pub fn render(
         .flatten()
         .cloned()
         .collect::<Vec<_>>();
-        let hints_3 = [
-            keybind("C-q", "Quit  "),
-            keybind("C-o", "SSH Here  "),
-            keybind(".", "Dotfiles  "),
-        ]
-        .iter()
-        .flatten()
-        .cloned()
-        .collect::<Vec<_>>();
-        Paragraph::new(vec![
-            Line::from(hints),
-            Line::from(hints_2),
-            Line::from(hints_3),
-        ])
+        Paragraph::new(vec![Line::from(hints), Line::from(hints_2)])
             .styles(ctx.theme.paragraph_style())
             .alignment(ratatui::layout::Alignment::Center)
             .block(
