@@ -10,16 +10,28 @@ type Result<T> = std::result::Result<T, ParserError>;
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct Host {
+    /// The patterns the `Host` line listed, separated by whitespace. `ssh`
+    /// accepts more than one per block, as in `Host git github.com`.
     #[serde(rename = "Host")]
     pub name: String,
+    /// Everything below is optional in `ssh_config(5)`: a block may set only
+    /// the keywords it needs, and `Host *` blocks routinely set none of these.
     #[serde(rename = "HostName")]
-    pub host_name: String,
+    pub host_name: Option<String>,
     #[serde(rename = "User")]
-    pub user: String,
+    pub user: Option<String>,
     #[serde(rename = "IdentityFile")]
-    pub identity_file: String,
+    pub identity_file: Option<String>,
     #[serde(rename = "Port", default = "default_port")]
     pub port: u16,
+}
+
+impl Host {
+    /// Whether this block applies to `alias`, which is any one of the patterns
+    /// on its `Host` line.
+    pub fn matches(&self, alias: &str) -> bool {
+        self.name.split_whitespace().any(|pattern| pattern == alias)
+    }
 }
 
 const fn default_port() -> u16 {
@@ -29,13 +41,27 @@ const fn default_port() -> u16 {
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct Hosts(pub Vec<Host>);
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum Identifier {
     Host,
     HostName,
     Port,
     User,
     IdentityFile,
+}
+
+impl Identifier {
+    /// The spelling [`Host`] renames its fields to, so that every accepted
+    /// casing of a keyword reaches the same field.
+    const fn field_name(self) -> &'static str {
+        match self {
+            Identifier::Host => "Host",
+            Identifier::HostName => "HostName",
+            Identifier::Port => "Port",
+            Identifier::User => "User",
+            Identifier::IdentityFile => "IdentityFile",
+        }
+    }
 }
 
 impl serde::de::Error for ParserError {
@@ -47,12 +73,13 @@ impl serde::de::Error for ParserError {
 impl TryFrom<String> for Identifier {
     type Error = ParserError;
     fn try_from(value: String) -> std::result::Result<Self, Self::Error> {
-        match value.as_str() {
-            "Host" => Ok(Identifier::Host),
-            "HostName" => Ok(Identifier::HostName),
-            "Port" => Ok(Identifier::Port),
-            "User" => Ok(Identifier::User),
-            "IdentityFile" => Ok(Identifier::IdentityFile),
+        // Keywords are case-insensitive in ssh_config(5).
+        match value.to_ascii_lowercase().as_str() {
+            "host" => Ok(Identifier::Host),
+            "hostname" => Ok(Identifier::HostName),
+            "port" => Ok(Identifier::Port),
+            "user" => Ok(Identifier::User),
+            "identityfile" => Ok(Identifier::IdentityFile),
             _ => Err(ParserError::UnexpectedToken),
         }
     }
@@ -112,69 +139,76 @@ impl<'de> Deserializer<'de> {
         Ok(ch)
     }
 
-    fn skip_whitespace(&mut self) {
-        let to_skip = self
+    /// Advances past every character up to the first one `keep` accepts.
+    /// Indexes by byte offset, so a comment or value containing non-ASCII text
+    /// cannot land the input in the middle of a character.
+    fn take_until(&mut self, keep: impl Fn(char) -> bool) -> &'de str {
+        let end = self
             .input
-            .chars()
-            .take_while(|ch| ch.is_whitespace())
-            .count();
-        self.input = &self.input[to_skip..];
+            .char_indices()
+            .find(|(_, ch)| keep(*ch))
+            .map_or(self.input.len(), |(idx, _)| idx);
+        let (taken, rest) = self.input.split_at(end);
+        self.input = rest;
+        taken
+    }
 
-        // Skip comments
-        while self.input.starts_with('#') {
-            let to_eol = self.input.chars().take_while(|ch| *ch != '\n').count();
-            self.input = &self.input[to_eol..];
-
-            if self.input.starts_with('\n') {
-                self.input = &self.input[1..];
-            }
-
-            let to_skip = self
-                .input
-                .chars()
-                .take_while(|ch| ch.is_whitespace())
-                .count();
-            self.input = &self.input[to_skip..];
+    /// Consumes the rest of the line, including the newline that ends it.
+    fn skip_line(&mut self) {
+        self.take_until(|ch| ch == '\n');
+        if self.input.starts_with('\n') {
+            self.input = &self.input[1..];
         }
     }
 
-    fn peek_identifier(&mut self) -> Result<Identifier> {
-        let mut iter = self.input.chars().peekable();
-
-        while let Some(&ch) = iter.peek() {
-            if ch.is_whitespace() {
-                iter.next();
-            } else {
-                break;
+    fn skip_whitespace(&mut self) {
+        loop {
+            self.take_until(|ch| !ch.is_whitespace());
+            if !self.input.starts_with('#') {
+                return;
             }
+            self.skip_line();
         }
-
-        let mut word = String::new();
-        while let Some(&ch) = iter.peek() {
-            if !ch.is_whitespace() {
-                word.push(ch);
-                iter.next();
-            } else {
-                break;
-            }
-        }
-
-        Identifier::try_from(word)
     }
 
-    fn parse_identifier(&mut self) -> Result<Identifier> {
+    /// Consumes one keyword, plus the `=` separator if the line uses one:
+    /// `Port 22`, `Port=22` and `Port = 22` are all the same to `ssh`.
+    /// Returns the canonical spelling for keywords it knows, and the word as
+    /// written for the rest, which lets serde ignore them.
+    fn parse_keyword(&mut self) -> String {
         self.skip_whitespace();
-        let mut identifier = String::new();
+        let word = self.take_until(|ch| ch.is_whitespace() || ch == '=');
 
-        while let Ok(ch) = self.peek_char() {
-            if !ch.is_whitespace() {
-                identifier.push(ch);
-                self.advance()?;
-            } else {
-                break;
-            }
+        let separator = self.input.trim_start_matches([' ', '\t']);
+        if let Some(rest) = separator.strip_prefix('=') {
+            self.input = rest;
         }
-        Identifier::try_from(identifier)
+
+        Identifier::try_from(word.to_owned())
+            .map_or_else(|_| word.to_owned(), |id| id.field_name().to_owned())
+    }
+
+    /// The keyword starting at the current position, without consuming it.
+    fn peek_identifier(&self) -> Result<Identifier> {
+        let mut probe = Deserializer {
+            input: self.input,
+            pending_host: None,
+        };
+        probe.skip_whitespace();
+        if probe.input.is_empty() {
+            return Err(ParserError::Eof);
+        }
+        Identifier::try_from(
+            probe
+                .take_until(|ch| ch.is_whitespace() || ch == '=')
+                .to_owned(),
+        )
+    }
+
+    /// Consumes the rest of the line as a value, dropping any trailing comment.
+    fn parse_rest_of_line(&mut self) -> String {
+        let line = self.take_until(|ch| ch == '\n');
+        line.split('#').next().unwrap_or(line).trim().to_owned()
     }
 
     fn parse_string(&mut self) -> Result<String> {
@@ -216,7 +250,7 @@ impl<'de> Deserializer<'de> {
     }
 }
 
-impl<'de> serde::Deserializer<'de> for & mut Deserializer<'de> {
+impl<'de> serde::Deserializer<'de> for &mut Deserializer<'de> {
     type Error = ParserError;
 
     fn deserialize_any<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
@@ -288,19 +322,18 @@ impl<'de> serde::Deserializer<'de> for & mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        let trimmed = self.input.trim_start();
-        self.input = trimmed;
+        self.skip_whitespace();
 
         // Check if this struct starts with the "Host" keyword
         match self.peek_identifier() {
             Ok(Identifier::Host) => {
-                self.parse_identifier()?; // Consume "Host"
-                self.skip_whitespace();
-                let host_name = self.parse_string()?; // Parse the alias (e.g., "mc_server")
-                self.skip_whitespace();
+                self.parse_keyword(); // Consume "Host"
+                // A `Host` line may list several patterns, as in
+                // `Host git github.com`; keep all of them.
+                let patterns = self.parse_rest_of_line();
 
                 // Store the name to be injected when the map is visited
-                self.pending_host = Some(host_name);
+                self.pending_host = Some(patterns);
 
                 let host = visitor.visit_map(WhitespaceSeparated::new(self))?;
                 Ok(host)
@@ -409,11 +442,14 @@ impl<'de> serde::Deserializer<'de> for & mut Deserializer<'de> {
     {
         unimplemented!()
     }
-    fn deserialize_option<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
+    /// A keyword that appears always has a value; a keyword that is absent
+    /// never reaches the deserializer at all, and serde leaves the field
+    /// `None`. So there is nothing to look at here but the value itself.
+    fn deserialize_option<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        visitor.visit_some(self)
     }
     fn deserialize_u64<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
     where
@@ -466,11 +502,16 @@ impl<'de> serde::Deserializer<'de> for & mut Deserializer<'de> {
     {
         unimplemented!()
     }
-    fn deserialize_ignored_any<V>(self, _: V) -> std::result::Result<V::Value, Self::Error>
+    /// Reached for every keyword the [`Host`] struct does not name, of which a
+    /// real config has many: `PreferredAuthentications`, `ForwardAgent`, and so
+    /// on. The argument of such a keyword runs to the end of the line, so drop
+    /// the line and carry on with the next keyword.
+    fn deserialize_ignored_any<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        self.skip_line();
+        visitor.visit_unit()
     }
 }
 
@@ -494,17 +535,23 @@ impl<'a, 'de> SeqAccess<'de> for HostsSeqAccess<'a, 'de> {
     where
         T: serde::de::DeserializeSeed<'de>,
     {
-        self.de.skip_whitespace();
+        loop {
+            self.de.skip_whitespace();
 
-        if self.de.input.is_empty() {
-            return Ok(None);
-        }
+            if self.de.input.is_empty() {
+                return Ok(None);
+            }
 
-        match self.de.peek_identifier() {
-            Ok(Identifier::Host) => seed.deserialize(&mut *self.de).map(Some),
-            Ok(_) => Err(ParserError::UnexpectedToken),
-            Err(ParserError::Eof) => Ok(None),
-            Err(e) => Err(e),
+            match self.de.peek_identifier() {
+                Ok(Identifier::Host) => return seed.deserialize(&mut *self.de).map(Some),
+                // A directive that belongs to no `Host` block, which is how
+                // configs open: `Include`, `AddKeysToAgent`, `ServerAliveInterval`.
+                // They apply to every host, and this parser reads per-host
+                // settings only, so pass over them.
+                Ok(_) | Err(ParserError::UnexpectedToken) => self.de.skip_line(),
+                Err(ParserError::Eof) => return Ok(None),
+                Err(e) => return Err(e),
+            }
         }
     }
 }
@@ -543,7 +590,10 @@ impl<'a, 'de> MapAccess<'de> for WhitespaceSeparated<'a, 'de> {
             return Ok(None);
         }
 
-        seed.deserialize(&mut *self.de).map(Some)
+        // Hand serde the canonical spelling so that any casing of a keyword
+        // reaches the right field, and an unknown one is ignored by name.
+        seed.deserialize(self.de.parse_keyword().into_deserializer())
+            .map(Some)
     }
 
     fn next_value_seed<V>(&mut self, seed: V) -> std::result::Result<V::Value, Self::Error>
@@ -575,8 +625,8 @@ mod tests {
 	IdentityFile ~/Downloads/ssh-key-2024-06-13.key ";
         let host: Host = from_str(test_str.trim()).unwrap();
         assert_eq!(host.name, "mc_server");
-        assert_eq!(host.host_name, "141.148.218.223");
-        assert_eq!(host.user, "opc");
+        assert_eq!(host.host_name.as_deref(), Some("141.148.218.223"));
+        assert_eq!(host.user.as_deref(), Some("opc"));
         assert_eq!(host.port, 22);
     }
 
@@ -598,14 +648,160 @@ Host git_server
 
         let h1 = &hosts.0[0];
         assert_eq!(h1.name, "mc_server");
-        assert_eq!(h1.host_name, "141.148.218.223");
-        assert_eq!(h1.user, "opc");
+        assert_eq!(h1.host_name.as_deref(), Some("141.148.218.223"));
+        assert_eq!(h1.user.as_deref(), Some("opc"));
 
         let h2 = &hosts.0[1];
         assert_eq!(h2.name, "git_server");
-        assert_eq!(h2.host_name, "github.com");
-        assert_eq!(h2.user, "git");
+        assert_eq!(h2.host_name.as_deref(), Some("github.com"));
+        assert_eq!(h2.user.as_deref(), Some("git"));
         assert_eq!(h2.port, 2222);
+    }
+
+    /// A config in the shape people actually keep, exercising every tolerance
+    /// below at once.
+    const REALISTIC_CONFIG: &str = "\
+# Defaults for every host
+Include ~/.ssh/config.d/*
+AddKeysToAgent yes
+
+Host mc_server
+	HostName 141.148.218.223
+	User opc
+	Port 22
+	IdentityFile ~/Downloads/ssh-key.key
+	PreferredAuthentications publickey
+	ForwardAgent no
+
+Host git_server
+	hostname github.com
+	user git
+	Port=2222
+	IdentityFile ~/.ssh/id_rsa
+";
+
+    #[test]
+    fn unknown_keywords_are_ignored() {
+        let host: Host = from_str(
+            "Host mc_server
+	HostName 141.148.218.223
+	PreferredAuthentications publickey
+	User opc
+	IdentityFile ~/.ssh/id_rsa",
+        )
+        .unwrap();
+        assert_eq!(host.host_name.as_deref(), Some("141.148.218.223"));
+        assert_eq!(host.user.as_deref(), Some("opc"));
+    }
+
+    #[test]
+    fn keywords_are_case_insensitive() {
+        let host: Host = from_str(
+            "Host mc_server
+	hostname 141.148.218.223
+	USER opc
+	IdentityFile ~/.ssh/id_rsa
+	port 2222",
+        )
+        .unwrap();
+        assert_eq!(host.host_name.as_deref(), Some("141.148.218.223"));
+        assert_eq!(host.user.as_deref(), Some("opc"));
+        assert_eq!(host.port, 2222);
+    }
+
+    #[test]
+    fn keywords_accept_an_equals_separator() {
+        let host: Host = from_str(
+            "Host mc_server
+	HostName=141.148.218.223
+	User = opc
+	IdentityFile ~/.ssh/id_rsa
+	Port=2222",
+        )
+        .unwrap();
+        assert_eq!(host.host_name.as_deref(), Some("141.148.218.223"));
+        assert_eq!(host.user.as_deref(), Some("opc"));
+        assert_eq!(host.port, 2222);
+    }
+
+    #[test]
+    fn directives_before_the_first_host_are_ignored() {
+        let hosts: Hosts = from_str(
+            "Include ~/.ssh/config.d/*
+AddKeysToAgent yes
+
+Host mc_server
+	HostName 141.148.218.223
+	User opc
+	IdentityFile ~/.ssh/id_rsa",
+        )
+        .unwrap();
+        assert_eq!(hosts.0.len(), 1);
+        assert_eq!(hosts.0[0].name, "mc_server");
+    }
+
+    #[test]
+    fn wildcard_block_without_per_host_keywords_parses() {
+        let hosts: Hosts = from_str(
+            "Host *
+	ServerAliveInterval 60
+	AddKeysToAgent yes
+
+Host mc_server
+	HostName 141.148.218.223",
+        )
+        .unwrap();
+        assert_eq!(hosts.0.len(), 2);
+        assert_eq!(hosts.0[0].name, "*");
+        assert_eq!(hosts.0[0].host_name, None);
+        assert_eq!(hosts.0[0].user, None);
+        assert_eq!(hosts.0[0].identity_file, None);
+        assert_eq!(hosts.0[0].port, 22);
+        assert!(!hosts.0[0].matches("mc_server"));
+    }
+
+    #[test]
+    fn a_host_line_may_list_several_patterns() {
+        let host: Host = from_str(
+            "Host git github.com gh
+	HostName github.com
+	User git",
+        )
+        .unwrap();
+        assert!(host.matches("git"));
+        assert!(host.matches("github.com"));
+        assert!(host.matches("gh"));
+        assert!(!host.matches("gitlab.com"));
+    }
+
+    #[test]
+    fn comments_may_contain_non_ascii() {
+        // Byte offsets and character counts part ways here, and slicing the
+        // input by the wrong one panics.
+        let host: Host = from_str(
+            "# ✨ the résumé server ✨
+Host mc_server	# inline ✨ comment
+	HostName 141.148.218.223",
+        )
+        .unwrap();
+        assert_eq!(host.name, "mc_server");
+        assert_eq!(host.host_name.as_deref(), Some("141.148.218.223"));
+    }
+
+    #[test]
+    fn realistic_config_parses() {
+        let hosts: Hosts = from_str(REALISTIC_CONFIG).unwrap();
+        assert_eq!(hosts.0.len(), 2);
+
+        assert_eq!(hosts.0[0].name, "mc_server");
+        assert_eq!(hosts.0[0].host_name.as_deref(), Some("141.148.218.223"));
+        assert_eq!(hosts.0[0].user.as_deref(), Some("opc"));
+        assert_eq!(hosts.0[0].port, 22);
+
+        assert_eq!(hosts.0[1].name, "git_server");
+        assert_eq!(hosts.0[1].host_name.as_deref(), Some("github.com"));
+        assert_eq!(hosts.0[1].user.as_deref(), Some("git"));
+        assert_eq!(hosts.0[1].port, 2222);
     }
 
     #[test]
@@ -613,9 +809,9 @@ Host git_server
         // Note: The tokens reflect the internal view where "Host" becomes a map key
         let host = Host {
             name: "mc_server".to_string(),
-            host_name: "141.148.218.223".to_string(),
-            user: "opc".to_string(),
-            identity_file: "~/Downloads/ssh-key-2024-06-13.key".to_string(),
+            host_name: Some("141.148.218.223".to_string()),
+            user: Some("opc".to_string()),
+            identity_file: Some("~/Downloads/ssh-key-2024-06-13.key".to_string()),
             port: 22,
         };
         assert_de_tokens(
@@ -628,10 +824,13 @@ Host git_server
                 Token::Str("Host"),
                 Token::Str("mc_server"),
                 Token::Str("HostName"),
+                Token::Some,
                 Token::Str("141.148.218.223"),
                 Token::Str("User"),
+                Token::Some,
                 Token::Str("opc"),
                 Token::Str("IdentityFile"),
+                Token::Some,
                 Token::Str("~/Downloads/ssh-key-2024-06-13.key"),
                 Token::Str("Port"),
                 Token::U16(22),
