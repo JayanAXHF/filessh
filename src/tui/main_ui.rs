@@ -475,6 +475,8 @@ pub fn render(
 
             format!("[3] mv [{}/{}] to Path", state.current_path, file.name())
         }
+        InputMode::CreateNewFile => format!("[3] touch [{}/] Name", state.current_path),
+        InputMode::CreateNewFolder => format!("[3] mkdir [{}/] Name", state.current_path),
         _ => String::new(),
     };
     let input = TextInput::new().style(ctx.theme.container_base()).block(
