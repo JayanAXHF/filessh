@@ -41,6 +41,7 @@ use ratatui::crossterm;
 use ratatui::crossterm::ExecutableCommand;
 use ratatui::crossterm::cursor::MoveToRow;
 use ratatui::crossterm::cursor::Show;
+use ratatui::crossterm::event::KeyEventKind;
 use ratatui::crossterm::terminal::EnterAlternateScreen;
 use ratatui::crossterm::terminal::LeaveAlternateScreen;
 use ratatui::crossterm::terminal::disable_raw_mode;
@@ -575,10 +576,19 @@ pub fn event(
                     _ => Control::Continue,
                 });
             }
-            if state.in_multi_key_combo_new {
-                // `n` is a prefix, so whatever follows ends it, including the
-                // key that completes it. Leaving it armed would keep taking
-                // every later `f` and `d`, wherever they were typed.
+            // `n` is a prefix, so the next key ends it, including the key that
+            // completes it. Leaving it armed would keep taking every later `f`
+            // and `d`, wherever they were typed. Only a key counts: motion
+            // tracking is on, so mouse events arrive whenever the pointer
+            // crosses the terminal, and ending the prefix on one of those would
+            // drop the combo before its second key ever arrived.
+            if state.in_multi_key_combo_new
+                && matches!(
+                    event,
+                    crossterm::event::Event::Key(key)
+                        if matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat)
+                )
+            {
                 state.in_multi_key_combo_new = false;
                 try_flow!(match event {
                     ct_event!(key press 'f') => {
@@ -608,6 +618,11 @@ pub fn event(
                     ctx.focus().focus(&state.table_state);
                     state.filtered_file_entries.clear();
                     state.input_state.clear();
+                    // Put the input box back to filtering. Leaving the mode
+                    // behind meant a cancelled prompt was still live: after Esc
+                    // on a delete confirmation, focusing the input and typing a
+                    // `y` for any reason carried out the delete, unprompted.
+                    state.input_mode = InputMode::default();
                     Control::Changed
                 }
                 _ => Control::Continue,
