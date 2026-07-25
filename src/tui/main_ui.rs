@@ -574,6 +574,10 @@ pub fn event(
                 });
             }
             if state.in_multi_key_combo_new {
+                // `n` is a prefix, so whatever follows ends it, including the
+                // key that completes it. Leaving it armed would keep taking
+                // every later `f` and `d`, wherever they were typed.
+                state.in_multi_key_combo_new = false;
                 try_flow!(match event {
                     ct_event!(key press 'f') => {
                         state.input_mode = InputMode::CreateNewFile;
@@ -586,11 +590,7 @@ pub fn event(
                         Control::Changed
                     }
                     _ => {
-                        if state.input_mode != InputMode::CreateNewFolder
-                            || state.input_mode != InputMode::CreateNewFile
-                        {
-                            warn!("Not a valid key combination");
-                        }
+                        warn!("Not a valid key combination");
                         Control::Continue
                     }
                 })
@@ -840,7 +840,6 @@ pub fn event(
                                     });
                                     state.input_state.clear();
                                     state.input_mode = InputMode::default();
-                                    state.in_multi_key_combo_new = false;
                                 }
                                 _ => {}
                             }
@@ -862,7 +861,6 @@ pub fn event(
                                     });
                                     state.input_state.clear();
                                     state.input_mode = InputMode::default();
-                                    state.in_multi_key_combo_new = false;
                                 }
                                 _ => {}
                             }
