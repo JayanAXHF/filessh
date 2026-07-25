@@ -22,24 +22,71 @@ pub struct Host {
     pub user: Option<String>,
     #[serde(rename = "IdentityFile")]
     pub identity_file: Option<String>,
-    #[serde(rename = "Port", default = "default_port")]
-    pub port: u16,
+    #[serde(rename = "Port")]
+    pub port: Option<u16>,
 }
 
 impl Host {
-    /// Whether this block applies to `alias`, which is any one of the patterns
-    /// on its `Host` line.
+    /// Whether this block applies to `alias`. A `Host` line carries one or more
+    /// patterns, in which `*` and `?` are wildcards, and a `!` prefix excludes.
     pub fn matches(&self, alias: &str) -> bool {
-        self.name.split_whitespace().any(|pattern| pattern == alias)
+        let mut matched = false;
+        for pattern in self.name.split_whitespace() {
+            match pattern.strip_prefix('!') {
+                Some(excluded) => {
+                    if pattern_matches(excluded, alias) {
+                        return false;
+                    }
+                }
+                None => matched |= pattern_matches(pattern, alias),
+            }
+        }
+        matched
     }
 }
 
-const fn default_port() -> u16 {
-    22
+fn pattern_matches(pattern: &str, alias: &str) -> bool {
+    if pattern.contains(['*', '?', '[']) {
+        glob::Pattern::new(pattern).is_ok_and(|pattern| pattern.matches(alias))
+    } else {
+        pattern == alias
+    }
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct Hosts(pub Vec<Host>);
+
+impl Hosts {
+    /// The settings to connect to `alias` with: every block whose patterns match
+    /// it, in the order the file lists them, with the first value obtained for
+    /// each keyword winning, as in `ssh_config(5)`. A `Host *` block therefore
+    /// supplies whatever the blocks above it left out.
+    ///
+    /// `None` when no block matches at all. Note that a config with a `Host *`
+    /// block always matches, which is also how `ssh` behaves: the alias is then
+    /// the host name.
+    pub fn settings_for(&self, alias: &str) -> Option<Host> {
+        let mut matching = self.0.iter().filter(|host| host.matches(alias)).peekable();
+        matching.peek()?;
+
+        let mut settings = Host {
+            name: alias.to_owned(),
+            host_name: None,
+            user: None,
+            identity_file: None,
+            port: None,
+        };
+        for host in matching {
+            settings.host_name = settings.host_name.or_else(|| host.host_name.clone());
+            settings.user = settings.user.or_else(|| host.user.clone());
+            settings.identity_file = settings
+                .identity_file
+                .or_else(|| host.identity_file.clone());
+            settings.port = settings.port.or(host.port);
+        }
+        Some(settings)
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 enum Identifier {
@@ -627,7 +674,7 @@ mod tests {
         assert_eq!(host.name, "mc_server");
         assert_eq!(host.host_name.as_deref(), Some("141.148.218.223"));
         assert_eq!(host.user.as_deref(), Some("opc"));
-        assert_eq!(host.port, 22);
+        assert_eq!(host.port, Some(22));
     }
 
     #[test]
@@ -655,7 +702,7 @@ Host git_server
         assert_eq!(h2.name, "git_server");
         assert_eq!(h2.host_name.as_deref(), Some("github.com"));
         assert_eq!(h2.user.as_deref(), Some("git"));
-        assert_eq!(h2.port, 2222);
+        assert_eq!(h2.port, Some(2222));
     }
 
     /// A config in the shape people actually keep, exercising every tolerance
@@ -706,7 +753,7 @@ Host git_server
         .unwrap();
         assert_eq!(host.host_name.as_deref(), Some("141.148.218.223"));
         assert_eq!(host.user.as_deref(), Some("opc"));
-        assert_eq!(host.port, 2222);
+        assert_eq!(host.port, Some(2222));
     }
 
     #[test]
@@ -721,7 +768,7 @@ Host git_server
         .unwrap();
         assert_eq!(host.host_name.as_deref(), Some("141.148.218.223"));
         assert_eq!(host.user.as_deref(), Some("opc"));
-        assert_eq!(host.port, 2222);
+        assert_eq!(host.port, Some(2222));
     }
 
     #[test]
@@ -756,8 +803,9 @@ Host mc_server
         assert_eq!(hosts.0[0].host_name, None);
         assert_eq!(hosts.0[0].user, None);
         assert_eq!(hosts.0[0].identity_file, None);
-        assert_eq!(hosts.0[0].port, 22);
-        assert!(!hosts.0[0].matches("mc_server"));
+        assert_eq!(hosts.0[0].port, None);
+        // `*` matches everything, which is the point of such a block.
+        assert!(hosts.0[0].matches("mc_server"));
     }
 
     #[test]
@@ -789,6 +837,71 @@ Host mc_server	# inline ✨ comment
     }
 
     #[test]
+    fn a_wildcard_block_supplies_what_others_leave_out() {
+        let hosts: Hosts = from_str(
+            "Host web
+	HostName web.example.com
+
+Host *
+	User deploy
+	IdentityFile ~/.ssh/id_ed25519
+	Port 2222",
+        )
+        .unwrap();
+
+        let web = hosts.settings_for("web").unwrap();
+        assert_eq!(web.host_name.as_deref(), Some("web.example.com"));
+        assert_eq!(web.user.as_deref(), Some("deploy"));
+        assert_eq!(web.identity_file.as_deref(), Some("~/.ssh/id_ed25519"));
+        assert_eq!(web.port, Some(2222));
+    }
+
+    #[test]
+    fn the_first_value_obtained_wins() {
+        let hosts: Hosts = from_str(
+            "Host web
+	User specific
+
+Host *
+	User general",
+        )
+        .unwrap();
+        assert_eq!(
+            hosts.settings_for("web").unwrap().user.as_deref(),
+            Some("specific")
+        );
+    }
+
+    #[test]
+    fn patterns_match_wildcards_and_exclusions() {
+        let hosts: Hosts = from_str(
+            "Host *.example.com !secret.example.com
+	User deploy",
+        )
+        .unwrap();
+        assert_eq!(
+            hosts
+                .settings_for("web.example.com")
+                .unwrap()
+                .user
+                .as_deref(),
+            Some("deploy")
+        );
+        assert!(hosts.settings_for("secret.example.com").is_none());
+        assert!(hosts.settings_for("elsewhere.net").is_none());
+    }
+
+    #[test]
+    fn an_unmatched_alias_has_no_settings() {
+        let hosts: Hosts = from_str(
+            "Host web
+	HostName web.example.com",
+        )
+        .unwrap();
+        assert!(hosts.settings_for("other").is_none());
+    }
+
+    #[test]
     fn realistic_config_parses() {
         let hosts: Hosts = from_str(REALISTIC_CONFIG).unwrap();
         assert_eq!(hosts.0.len(), 2);
@@ -796,12 +909,12 @@ Host mc_server	# inline ✨ comment
         assert_eq!(hosts.0[0].name, "mc_server");
         assert_eq!(hosts.0[0].host_name.as_deref(), Some("141.148.218.223"));
         assert_eq!(hosts.0[0].user.as_deref(), Some("opc"));
-        assert_eq!(hosts.0[0].port, 22);
+        assert_eq!(hosts.0[0].port, Some(22));
 
         assert_eq!(hosts.0[1].name, "git_server");
         assert_eq!(hosts.0[1].host_name.as_deref(), Some("github.com"));
         assert_eq!(hosts.0[1].user.as_deref(), Some("git"));
-        assert_eq!(hosts.0[1].port, 2222);
+        assert_eq!(hosts.0[1].port, Some(2222));
     }
 
     #[test]
@@ -812,7 +925,7 @@ Host mc_server	# inline ✨ comment
             host_name: Some("141.148.218.223".to_string()),
             user: Some("opc".to_string()),
             identity_file: Some("~/Downloads/ssh-key-2024-06-13.key".to_string()),
-            port: 22,
+            port: Some(22),
         };
         assert_de_tokens(
             &host,
@@ -833,6 +946,7 @@ Host mc_server	# inline ✨ comment
                 Token::Some,
                 Token::Str("~/Downloads/ssh-key-2024-06-13.key"),
                 Token::Str("Port"),
+                Token::Some,
                 Token::U16(22),
                 Token::StructEnd,
             ],

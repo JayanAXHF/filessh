@@ -6,6 +6,16 @@ use tracing::debug;
 
 use crate::ssh_config::{self, Host, Hosts, reader::SSHConfigReader};
 
+const DEFAULT_SSH_PORT: u16 = 22;
+
+/// The account `ssh` would log in as when nothing names one.
+fn local_username() -> Option<String> {
+    std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .ok()
+        .filter(|name| !name.is_empty())
+}
+
 impl ResolvedConnectArgs {
     /// Build a base SSH command (no remote path yet)
     pub fn build_ssh_command(&self) -> std::process::Command {
@@ -53,9 +63,10 @@ impl ConnectArgs {
             config_reader.read()?;
             let config = config_reader.finalize();
             let config: Hosts = ssh_config::from_str(&config)?;
-            let Some(host_config) = config.0.iter().find(|h| h.matches(host)) else {
+            let Some(host_config) = config.settings_for(host) else {
                 return Err(eyre!("Host not found in config file"));
             };
+            let host_config = &host_config;
             let path = self
                 .path
                 .as_ref()
@@ -91,8 +102,15 @@ impl ConnectArgs {
 
             return Ok(ResolvedConnectArgs {
                 host: host_name.clone().unwrap_or_else(|| host.clone()),
-                port: *port,
-                username: self.username.clone().or_else(|| user.clone()),
+                port: port.unwrap_or(DEFAULT_SSH_PORT),
+                // Without a `User` anywhere, ssh logs in as whoever is running
+                // it. Leaving this unset would reach the `root` fallback in
+                // `main` instead, which is nobody's account by default.
+                username: self
+                    .username
+                    .clone()
+                    .or_else(|| user.clone())
+                    .or_else(local_username),
                 private_key,
                 openssh_certificate: self.openssh_certificate.clone(),
                 path,
