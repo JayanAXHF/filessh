@@ -1,13 +1,14 @@
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::io::Write;
-use std::path::Path;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use color_eyre::Result;
 use color_eyre::eyre::{Context, bail};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
-use ratatui::crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use ratatui::crossterm::terminal::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled};
 use russh::keys::*;
 use russh::*;
 use russh_sftp::client::SftpSession;
@@ -17,12 +18,32 @@ use tracing::debug;
 /// How many times to ask for a passphrase before giving up, as in `ssh`.
 const PASSPHRASE_ATTEMPTS: usize = 3;
 
+/// Keys already decrypted in this process, so that one key costs one prompt.
+///
+/// `connect` runs twice for a single startup: `main` opens the session the file
+/// browser is handed, and `main_ui::init` opens another once the interface is
+/// up. The second call arrives with the TUI holding the terminal, where a
+/// prompt cannot be answered, so it has to be served from here.
+static DECRYPTED_KEYS: LazyLock<Mutex<HashMap<PathBuf, Arc<PrivateKey>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn decrypted_keys() -> std::sync::MutexGuard<'static, HashMap<PathBuf, Arc<PrivateKey>>> {
+    // A panic while holding this lock would leave a key cache, not a torn one.
+    DECRYPTED_KEYS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Loads a private key, asking for the passphrase if the key turns out to be
 /// encrypted. `russh` reports that as [`keys::Error::KeyIsEncrypted`] rather
 /// than prompting itself.
-fn load_secret_key_interactive(key_path: &Path) -> Result<PrivateKey> {
+fn load_secret_key_interactive(key_path: &Path) -> Result<Arc<PrivateKey>> {
+    if let Some(key) = decrypted_keys().get(key_path) {
+        return Ok(Arc::clone(key));
+    }
+
     match load_secret_key(key_path, None) {
-        Ok(key) => return Ok(key),
+        Ok(key) => return Ok(Arc::new(key)),
         Err(keys::Error::KeyIsEncrypted) => {}
         Err(error) => {
             return Err(error).wrap_err_with(|| {
@@ -34,10 +55,17 @@ fn load_secret_key_interactive(key_path: &Path) -> Result<PrivateKey> {
     for attempt in 1..=PASSPHRASE_ATTEMPTS {
         let passphrase = prompt_passphrase(key_path)?;
         match load_secret_key(key_path, Some(&passphrase)) {
-            Ok(key) => return Ok(key),
-            Err(error) if attempt < PASSPHRASE_ATTEMPTS => {
-                // Almost always a mistyped passphrase, but name the real cause
-                // so a corrupt or unsupported key cannot masquerade as one.
+            Ok(key) => {
+                let key = Arc::new(key);
+                decrypted_keys().insert(key_path.to_path_buf(), Arc::clone(&key));
+                return Ok(key);
+            }
+            // Only a failure to decrypt is worth another passphrase. The file is
+            // re-read every attempt, so anything else — removed, unreadable,
+            // an unsupported key type — will not come good on the next one.
+            Err(error @ (keys::Error::SshKey(ssh_key::Error::Crypto) | keys::Error::KeyIsCorrupt))
+                if attempt < PASSPHRASE_ATTEMPTS =>
+            {
                 eprintln!(
                     "Bad passphrase ({error}), try again for key '{}'",
                     key_path.display()
@@ -55,6 +83,17 @@ fn load_secret_key_interactive(key_path: &Path) -> Result<PrivateKey> {
 
 /// Reads a passphrase from the terminal without echoing it.
 fn prompt_passphrase(key_path: &Path) -> Result<String> {
+    // Once the interface is up it owns the terminal, with its own raw mode and
+    // its own reader; a second reader here would take the keystrokes meant for
+    // it and hand the screen back in the wrong state. Reaching this means the
+    // key was not decrypted before the TUI started.
+    if is_raw_mode_enabled().unwrap_or(false) {
+        bail!(
+            "{} is encrypted, and its passphrase cannot be asked for while the interface is running",
+            key_path.display()
+        );
+    }
+
     /// Leaves raw mode however the read ends, including on `?`.
     struct RawMode;
     impl Drop for RawMode {
@@ -167,7 +206,7 @@ impl Session {
         // use publickey authentication, with or without certificate
         if let Some(openssh_cert) = openssh_cert {
             let auth_res = session
-                .authenticate_openssh_cert(user, Arc::new(key_pair), openssh_cert)
+                .authenticate_openssh_cert(user, key_pair, openssh_cert)
                 .await?;
 
             if !auth_res.success() {
@@ -178,7 +217,7 @@ impl Session {
                 .authenticate_publickey(
                     user,
                     PrivateKeyWithHashAlg::new(
-                        Arc::new(key_pair),
+                        key_pair,
                         session.best_supported_rsa_hash().await?.flatten(),
                     ),
                 )
