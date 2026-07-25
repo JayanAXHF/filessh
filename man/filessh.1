@@ -2,33 +2,92 @@
 .el .ds Aq '
 .TH filessh 1  "filessh"
 .SH NAME
-filessh \- Defines the command\-line interface for the application, specifying all possible arguments and options
+filessh \- a fast and convenient TUI file browser for remote servers
 .SH SYNOPSIS
-\fBfilessh\fR [\fB\-p\fR|\fB\-\-port\fR] [\fB\-u\fR|\fB\-\-username\fR] <\fB\-k\fR|\fB\-\-private\-key\fR> [\fB\-o\fR|\fB\-\-openssh\-certificate\fR] [\fB\-\-install\-man\-pages\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIHOST\fR> <\fIPATH\fR>
+\fBfilessh\fR [\fB\-p\fR|\fB\-\-port\fR \fIPORT\fR] [\fB\-u\fR|\fB\-\-username\fR \fIUSERNAME\fR] [\fB\-k\fR|\fB\-\-private\-key\fR \fIPRIVATE_KEY\fR] [\fB\-o\fR|\fB\-\-openssh\-certificate\fR \fIOPENSSH_CERTIFICATE\fR] [\fB\-f\fR|\fB\-\-from\-config\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIHOST\fR] [\fIPATH\fR]
+.br
+\fBfilessh\fR \fICOMMAND\fR
 .SH DESCRIPTION
-Defines the command\-line interface for the application, specifying all possible arguments and options
+\fBfilessh\fR is a terminal user interface for browsing and managing files on a
+remote server over SFTP. It can edit files in place in your \fB$EDITOR\fR,
+recursively download directories using parallel directory traversal, and spawn
+an \fBssh\fR(1) session into the directory you are currently looking at.
+.PP
+With no \fICOMMAND\fR, \fBfilessh\fR connects to \fIHOST\fR and opens
+\fIPATH\fR. Authentication is by public key: pass the key with
+\fB\-\-private\-key\fR, or use \fB\-\-from\-config\fR to take the host name,
+user, port and identity file from your \fBssh_config\fR(5) file.
 .SH OPTIONS
 .TP
 \fB\-p\fR, \fB\-\-port\fR \fI<PORT>\fR [default: 22]
-The port number to use for the SSH connection
+The port number to use for the SSH connection.
 .TP
 \fB\-u\fR, \fB\-\-username\fR \fI<USERNAME>\fR
-The username for logging into the remote host. If not provided, the SSH client may use the current local username or a default specified in SSH configuration
+The username for logging into the remote host.
 .TP
 \fB\-k\fR, \fB\-\-private\-key\fR \fI<PRIVATE_KEY>\fR
-The path to the private key file for public key authentication
+Path to the private key file for public key authentication. Required unless
+\fB\-\-from\-config\fR is used.
 .TP
 \fB\-o\fR, \fB\-\-openssh\-certificate\fR \fI<OPENSSH_CERTIFICATE>\fR
-An optional path to an OpenSSH certificate file for authentication
+Optional path to an OpenSSH certificate.
 .TP
-\fB\-\-install\-man\-pages\fR
-Install the man pages for the application
+\fB\-f\fR, \fB\-\-from\-config\fR
+Resolve the connection from your SSH config file, treating \fIHOST\fR as a
+\fBHost\fR alias defined there instead of as a host name.
 .TP
 \fB\-h\fR, \fB\-\-help\fR
-Print help
+Print help.
 .TP
-<\fIHOST\fR>
-The remote host to connect to (e.g., \*(Aqexample.com\*(Aq or \*(Aq192.168.1.100\*(Aq)
+\fB\-V\fR, \fB\-\-version\fR
+Print version.
 .TP
-<\fIPATH\fR>
-The initial directory path to open on the remote host after connecting
+[\fIHOST\fR]
+The remote host to connect to (e.g., \*(Aqexample.com\*(Aq or
+\*(Aq192.168.1.100\*(Aq), or a \fBHost\fR alias when \fB\-\-from\-config\fR is
+given.
+.TP
+[\fIPATH\fR]
+Initial directory path to open on the remote host.
+.SH COMMANDS
+.TP
+\fBconnect\fR
+Connect explicitly. Takes the same arguments and options as the default
+command; \fBfilessh connect example.com /var/www\fR and
+\fBfilessh example.com /var/www\fR are equivalent.
+.TP
+\fBinstall\-man\-pages\fR
+Install \fBfilessh\fR(1) and \fBfilessh\fR(5) into the system man directories,
+under \fB$PREFIX\fR if set and \fB/usr/local\fR otherwise.
+.TP
+\fBinit\-config\fR
+Write a configuration file containing the default settings to the default
+location. See \fBfilessh\fR(5).
+.TP
+\fBinstall\-completions\fR [\fISHELL\fR]
+Generate and install shell completion scripts. \fISHELL\fR may be \fBbash\fR
+(the default), \fBzsh\fR, \fBfish\fR, \fBelvish\fR, \fBpowershell\fR, or
+\fBauto\fR to detect the current shell.
+.SH FILES
+.TP
+\fB~/.ssh/config\fR
+Read when \fB\-\-from\-config\fR is given, for the \fBHostName\fR, \fBUser\fR,
+\fBPort\fR and \fBIdentityFile\fR of the requested \fBHost\fR alias.
+.TP
+\fBconfig.toml\fR
+Settings and theme, in a platform\-specific configuration directory. See
+\fBfilessh\fR(5) for the search order and the available keys.
+.SH EXAMPLES
+.TP
+Browse a directory on a host, authenticating with an explicit key:
+\fBfilessh \-\-username myuser \-\-private\-key ~/.ssh/id_ed25519 example.com /home/myuser\fR
+.TP
+Browse a host defined as a \fBHost\fR alias in \fB~/.ssh/config\fR:
+\fBfilessh \-\-from\-config myserver /var/www\fR
+.TP
+Install the man pages into a prefix you own:
+\fBPREFIX=~/.local filessh install\-man\-pages\fR
+.SH SEE ALSO
+\fBfilessh\fR(5), \fBssh\fR(1), \fBssh_config\fR(5), \fBsftp\fR(1)
+.SH BUGS
+Report bugs at \fBhttps://github.com/JayanAXHF/filessh/issues\fR.
