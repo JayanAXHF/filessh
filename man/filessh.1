@@ -4,7 +4,9 @@
 .SH NAME
 filessh \- a fast and convenient TUI file browser for remote servers
 .SH SYNOPSIS
-\fBfilessh\fR [\fB\-p\fR|\fB\-\-port\fR \fIPORT\fR] [\fB\-u\fR|\fB\-\-username\fR \fIUSERNAME\fR] [\fB\-k\fR|\fB\-\-private\-key\fR \fIPRIVATE_KEY\fR] [\fB\-o\fR|\fB\-\-openssh\-certificate\fR \fIOPENSSH_CERTIFICATE\fR] [\fB\-f\fR|\fB\-\-from\-config\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIHOST\fR] [\fIPATH\fR]
+\fBfilessh\fR [\fB\-p\fR|\fB\-\-port\fR \fIPORT\fR] [\fB\-u\fR|\fB\-\-username\fR \fIUSERNAME\fR] [\fB\-k\fR|\fB\-\-private\-key\fR \fIPRIVATE_KEY\fR] [\fB\-o\fR|\fB\-\-openssh\-certificate\fR \fIOPENSSH_CERTIFICATE\fR] [\fB\-f\fR|\fB\-\-from\-config\fR] \fIHOST\fR \fIPATH\fR
+.br
+\fBfilessh\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR]
 .br
 \fBfilessh\fR \fICOMMAND\fR
 .SH DESCRIPTION
@@ -42,13 +44,14 @@ Print help.
 \fB\-V\fR, \fB\-\-version\fR
 Print version.
 .TP
-[\fIHOST\fR]
+\fIHOST\fR
 The remote host to connect to (e.g., \*(Aqexample.com\*(Aq or
 \*(Aq192.168.1.100\*(Aq), or a \fBHost\fR alias when \fB\-\-from\-config\fR is
-given.
+given. Required, unless a \fICOMMAND\fR is given.
 .TP
-[\fIPATH\fR]
-Initial directory path to open on the remote host.
+\fIPATH\fR
+Initial directory path to open on the remote host. Required, unless a
+\fICOMMAND\fR is given.
 .SH COMMANDS
 .TP
 \fBconnect\fR

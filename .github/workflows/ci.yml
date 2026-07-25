@@ -9,6 +9,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Nothing here writes to the repository, so the token cannot either.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Build and test (${{ matrix.os }})
