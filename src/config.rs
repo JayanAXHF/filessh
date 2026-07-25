@@ -371,8 +371,7 @@ pub fn install_manpages() -> Result<()> {
         let man5_file = format!("{}.5", &*PROJECT_NAME).to_lowercase();
 
         // Embed manpages
-        // Adjust the include paths to your repo structure
-        let man1_contents = include_str!(concat!(env!("OUT_DIR"), "/filessh.1"));
+        let man1_contents = include_str!("../man/filessh.1");
         let man5_contents = include_str!("../man/filessh.5");
 
         // Write them to the correct directories
