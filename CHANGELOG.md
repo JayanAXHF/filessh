@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [unreleased]
 
+## [0.4.4] - 2026-07-25
+
+### Features
+
+- *(tui)* Title the new file and folder prompts
+
+### Bug Fixes
+
+- *(ssh_config)* Apply the settings a matching wildcard block supplies
+- *(cli)* Fall back like ssh when a Host omits keywords
+- *(ssh_config)* Parse the configs people actually have
+- *(tui)* End the prefix on keys only, and let Esc clear the input mode
+- *(tui)* End the `n` prefix on the next key, whatever it is
+- *(ssh)* Serve the second connect from a decrypted-key cache
+- *(ssh)* Ask for the passphrase instead of panicking on encrypted keys
+
+### Documentation
+
+- *(tui)* Put quit on the existing hint line instead of a new one
+- Document the keybindings, starting with how to quit
+
 ## [0.4.3] - 2026-02-27
 
 ### Documentation
